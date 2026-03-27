@@ -1,0 +1,16 @@
+{
+  "name": "youtube-transcript-to-html",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that turns YouTube transcripts into a live AI analysis workspace.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "wrangler": "^4.39.0"
+  }
+}
