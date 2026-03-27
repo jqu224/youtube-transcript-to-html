@@ -1,0 +1,14 @@
+---
+description: Bootstrap repo structure and enforce repo-wide workflow defaults
+alwaysApply: true
+---
+
+# Project Bootstrap
+
+- Read project rules before making changes.
+- If core project structure is missing, create the smallest sensible baseline for the task, such as `package.json`, `.gitignore`, `src/`, `tests/`, or tool configs.
+- Keep new structure consistent with the repo's actual language and tooling instead of adding generic scaffolding by default.
+- For JavaScript or TypeScript work, follow Google-style naming and formatting conventions.
+- Prefer test-driven development: define the expected behavior first, implement the minimum change, then refactor.
+- Before introducing a new pattern, dependency, or architecture choice, research the repo context and choose the simplest proven approach.
+- After each meaningful iteration, update project documentation or logs when the repo workflow requires it.

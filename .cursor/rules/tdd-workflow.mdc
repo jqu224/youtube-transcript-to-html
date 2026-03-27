@@ -1,0 +1,14 @@
+---
+description: Apply red-green-refactor workflow to JavaScript and TypeScript changes
+globs: **/*.{js,jsx,ts,tsx}
+alwaysApply: false
+---
+
+# TDD Workflow
+
+- Start with the behavior that should change.
+- Write or update a failing test first when adding features or fixing bugs.
+- Make the smallest implementation change needed to pass.
+- Refactor only after tests pass.
+- Keep tests focused on observable behavior and likely regressions.
+- If a change cannot be tested reasonably, explain why and use the best targeted verification available.
