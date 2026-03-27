@@ -6,9 +6,11 @@ alwaysApply: true
 # Update Logging
 
 - Keep project progress in `UPDATE_LOG/` using GitHub-renderable markdown.
-- Name entries `YYYY-MM-DD_HHMMSS_short-title.md` so files sort newest-first by timestamp.
-- Create a new log entry for each meaningful LLM work session and summarize the user request, work completed, and files changed.
+- Keep exactly one daily log file named `YYYY-MM-DD_summary.md` for each day of work.
+- Treat `UPDATE_LOG/2026-03-28_000000_initial-plan.md` as the one special standalone initial log entry.
+- Append new sections to the current day's file instead of creating multiple files for the same day.
+- Review the current daily log filename summary on each update and rename the file if the day's scope has changed enough that the summary is no longer accurate.
 - If the user explicitly describes manual edits or decisions, record them as human updates in the relevant log entry.
 - Keep dialog summaries short and simplified.
-- Maintain `UPDATE_LOG/README.md` as an index of entries sorted descending by timestamp.
+- Maintain `UPDATE_LOG/README.md` as an index sorted newest day first, with the initial log listed separately.
 - Do not duplicate unchanged details across many entries; link or summarize instead.
