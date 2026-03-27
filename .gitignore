@@ -1,0 +1,14 @@
+# Local-only files
+*.txt
+*.csv
+*.pyc
+__pycache__/
+node_modules/
+.wrangler/
+coverage/
+dist/
+.dev.vars
+
+# Keep installed UI/UX Pro Max skill data trackable
+!.cursor/skills/ui-ux-pro-max/data/*.csv
+!.cursor/skills/ui-ux-pro-max/data/**/*.csv

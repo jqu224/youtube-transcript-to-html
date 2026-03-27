@@ -6,6 +6,7 @@ alwaysApply: true
 # Project Bootstrap
 
 - Read project rules before making changes.
+- Keep changes repo-local by default. Do not create or edit user-global files under `~/.cursor/` unless the user explicitly asks for global changes.
 - If core project structure is missing, create the smallest sensible baseline for the task, such as `package.json`, `.gitignore`, `src/`, `tests/`, or tool configs.
 - Keep new structure consistent with the repo's actual language and tooling instead of adding generic scaffolding by default.
 - For JavaScript or TypeScript work, follow Google-style naming and formatting conventions.
