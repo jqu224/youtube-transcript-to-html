@@ -1,0 +1,14 @@
+---
+description: Maintain markdown update logs for LLM and human work sessions
+alwaysApply: true
+---
+
+# Update Logging
+
+- Keep project progress in `UPDATE_LOG/` using GitHub-renderable markdown.
+- Name entries `YYYY-MM-DD_HHMMSS_short-title.md` so files sort newest-first by timestamp.
+- Create a new log entry for each meaningful LLM work session and summarize the user request, work completed, and files changed.
+- If the user explicitly describes manual edits or decisions, record them as human updates in the relevant log entry.
+- Keep dialog summaries short and simplified.
+- Maintain `UPDATE_LOG/README.md` as an index of entries sorted descending by timestamp.
+- Do not duplicate unchanged details across many entries; link or summarize instead.

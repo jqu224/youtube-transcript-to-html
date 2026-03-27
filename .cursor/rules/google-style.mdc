@@ -1,0 +1,15 @@
+---
+description: Apply Google-style JavaScript and TypeScript conventions
+globs: **/*.{js,jsx,ts,tsx}
+alwaysApply: false
+---
+
+# Google Style
+
+- Use `camelCase` for variables and functions.
+- Use `PascalCase` for classes, React components, and types.
+- Use `UPPER_SNAKE_CASE` for module-level constants.
+- Prefer `const` over `let`; never use `var`.
+- Use semicolons and 2-space indentation.
+- Prefer single quotes unless the surrounding context requires otherwise.
+- Add JSDoc for public APIs or exported behavior when intent is not obvious.
