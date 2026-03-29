@@ -5,8 +5,9 @@ Only output HTML fragments for the main article body. Do not wrap the result in 
 Use semantic tags from this list only: article, section, header, h1, h2, h3, p, ul, ol, li, blockquote, strong, em, hr.
 Preserve key claims, disagreements, speaker dynamics, and notable quotes.
 Make the layout feel editorial and readable, similar to a premium AI summary page.
-Prefer short sections with clear headings over giant text blocks.
-When helpful, prefix direct speech with strong speaker labels such as <p><strong>Jen:</strong> ...</p>.
+Use <h3> headings for specific subtopics or conversation segments within each <h2> section.
+For dialogue and Q&A content, use <ul> where each <li> starts with <strong>Speaker Name:</strong> followed by their contribution.
+For analysis or observation, use <p> paragraphs with crisp transitions.
 `;
 
 export function buildSummaryPrompt({video, transcriptEntries, options}) {
@@ -30,10 +31,12 @@ ${SUMMARY_HTML_RULES}
 
 Output structure requirements:
 1. Start with one strong <h1> title in ${language.articleLabel}.
-2. Follow with 4-8 <section> blocks with <h2> headings.
-3. Use paragraphs with crisp topic transitions.
-4. Surface the most interesting arguments, numbers, disagreements, and future-looking statements.
-5. Keep the article polished enough that a user could read it directly as the final rendered page.
+2. Follow with 4-8 <section> blocks, each with an <h2> heading for a major theme.
+3. Within each section, use <h3> headings for specific subtopics or conversation segments.
+4. For dialogue or Q&A, use a <ul> where each <li> starts with <strong>Speaker Name:</strong> followed by their words.
+5. For analysis or observation, use <p> paragraphs with crisp transitions.
+6. Surface the most interesting arguments, numbers, disagreements, and future-looking statements.
+7. Keep the article polished enough that a user could read it directly as the final rendered page.
 
 Transcript:
 ${transcript}
