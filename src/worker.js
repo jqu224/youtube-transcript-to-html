@@ -149,7 +149,10 @@ async function handleWorkspaceRequest(request, fetchFn, env) {
   }
 
   if (requestUrl.searchParams.get('stream') === '1') {
-    return streamWorkspaceNdjson(body.url, fetchFn, env);
+    const wantWorkspaceDebug =
+      request.headers.get('x-workspace-debug') === '1'
+      || requestUrl.searchParams.get('workspaceDebug') === '1';
+    return streamWorkspaceNdjson(body.url, fetchFn, env, {wantWorkspaceDebug});
   }
 
   const workspace = await fetchWorkspaceMetadata(body.url, fetchFn, env);
@@ -175,9 +178,10 @@ async function handleTranscriptRequest(request, fetchFn, env) {
 /**
  * One YouTube watch fetch, then NDJSON: head line with full workspace JSON, cue chunks, done.
  */
-function streamWorkspaceNdjson(url, fetchFn, env) {
+function streamWorkspaceNdjson(url, fetchFn, env, options = {}) {
   const encoder = new TextEncoder();
   const chunkSize = TRANSCRIPT_NDJSON_CHUNK_SIZE;
+  const wantWorkspaceDebug = Boolean(options.wantWorkspaceDebug);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -185,6 +189,10 @@ function streamWorkspaceNdjson(url, fetchFn, env) {
         const data = await fetchWorkspaceData(url, fetchFn, env);
         if (!data || !data.video || !data.transcript) {
           throw new Error('Workspace response missing video or transcript.');
+        }
+        const workspaceDebug = data._workspaceDebug;
+        if (data._workspaceDebug) {
+          delete data._workspaceDebug;
         }
         const entries = normalizeTranscriptEntries(data.transcript.entries || []);
         const workspacePayload = makeWorkspacePayload({
@@ -200,14 +208,15 @@ function streamWorkspaceNdjson(url, fetchFn, env) {
         workspacePayload.transcript.source = data.transcript.source || '';
         workspacePayload.transcript.language = data.transcript.language || '';
 
-        controller.enqueue(
-          encoder.encode(
-            `${JSON.stringify({
-              type: 'head',
-              workspace: workspacePayload,
-            })}\n`,
-          ),
-        );
+        const headLine = {
+          type: 'head',
+          workspace: workspacePayload,
+        };
+        if (wantWorkspaceDebug && workspaceDebug) {
+          headLine.workspaceDebug = workspaceDebug;
+        }
+
+        controller.enqueue(encoder.encode(`${JSON.stringify(headLine)}\n`));
 
         await new Promise(function(resolve) {
           setTimeout(resolve, 0);

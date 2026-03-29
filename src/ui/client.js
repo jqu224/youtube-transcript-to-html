@@ -438,13 +438,25 @@ async function consumeWorkspaceNdjsonStream(response) {
   const streamT0 = typeof performance !== 'undefined' ? performance.now() : 0;
   let firstChunkLogged = false;
   let headLogged = false;
+  const workspaceDebug =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('workspaceDebug') === '1';
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 
   function processLine(line) {
-    const msg = JSON.parse(line);
+    let msg;
+    try {
+      msg = JSON.parse(line);
+    } catch (parseErr) {
+      console.error('[workspace-stream] NDJSON parse error', parseErr, 'line.slice(0,240)=', line.slice(0, 240));
+      throw parseErr;
+    }
+    if (workspaceDebug) {
+      console.log('[workspace-stream] event', msg.type, msg.type === 'head' ? {hasWorkspace: !!msg.workspace, hasWorkspaceDebug: !!msg.workspaceDebug} : {});
+    }
     if (msg.type === 'head' && msg.workspace) {
       const ws = msg.workspace;
       if (!ws.transcript) {
@@ -460,6 +472,9 @@ async function consumeWorkspaceNdjsonStream(response) {
       }
       if (!ws.video || !ws.video.id) {
         throw new Error('Workspace head is missing video metadata');
+      }
+      if (msg.workspaceDebug) {
+        console.log('[workspace] YouTube captions (server debug)', msg.workspaceDebug);
       }
       state.workspace = ws;
       state.localized = {
@@ -577,12 +592,25 @@ async function loadWorkspace() {
         headers: {'content-type': 'application/json'},
         signal: controller.signal,
       }),
-      fetch('/api/workspace?stream=1', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({url: url}),
-        signal: controller.signal,
-      }),
+      fetch(
+        '/api/workspace?stream=1'
+          + (typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).get('workspaceDebug') === '1'
+            ? '&workspaceDebug=1'
+            : ''),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(typeof window !== 'undefined' &&
+            new URLSearchParams(window.location.search).get('workspaceDebug') === '1'
+              ? {'x-workspace-debug': '1'}
+              : {}),
+          },
+          body: JSON.stringify({url: url}),
+          signal: controller.signal,
+        },
+      ),
     ]);
 
     const pingPayload = await parseApiJsonResponse(pingRes).catch(function(e) {
@@ -619,6 +647,15 @@ async function loadWorkspace() {
       setStatus('Workspace ready', 'success');
     }
   } catch (error) {
+    if (
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('workspaceDebug') === '1'
+    ) {
+      console.error('[workspace] loadWorkspace failed', error && error.message, {
+        hasWorkspace: Boolean(state.workspace),
+        hasTranscript: Boolean(state.workspace && state.workspace.transcript),
+      });
+    }
     if (error.name !== 'AbortError') {
       if (state.workspace && state.workspace.transcript && state.workspace.transcript.pending) {
         state.workspace = null;
@@ -921,6 +958,12 @@ function renderWorkspaceMeta() {
     return;
   }
 
+  if (!state.workspace.transcript) {
+    refs.videoSubtitle.textContent = state.workspace.video ? state.workspace.video.title : t('videoSubtitleInitial');
+    refs.transcriptSubtitle.textContent = t('transcriptSubtitleInitial');
+    return;
+  }
+
   const video = state.workspace.video;
   const localeState = getLocaleState();
   const transcriptEntries = getCurrentTranscriptEntries();
@@ -948,7 +991,7 @@ function renderWorkspaceMeta() {
   refs.videoBadges.innerHTML = [
     createPill(video.channelTitle || t('unknownChannel')),
     createPill(formatLength(video.lengthSeconds)),
-    createPill((state.workspace.transcript.language || t('autoLanguage')) + ' · ' + transcriptTag),
+    createPill(((state.workspace.transcript && state.workspace.transcript.language) || t('autoLanguage')) + ' · ' + transcriptTag),
   ].join('');
   refs.videoMeta.innerHTML =
     '<div class="video-meta-bar"><span class="video-meta-channel">' + escapeHtml(video.channelTitle || t('unknownChannel')) +
@@ -1554,7 +1597,7 @@ function getLocaleState(locale) {
 }
 
 function getCurrentTranscriptEntries() {
-  if (!state.workspace) {
+  if (!state.workspace || !state.workspace.transcript) {
     return [];
   }
   const localeState = getLocaleState();
@@ -1568,7 +1611,7 @@ function getCurrentTranscriptEntries() {
 }
 
 function getPromptTranscriptEntries(locale) {
-  if (!state.workspace) {
+  if (!state.workspace || !state.workspace.transcript) {
     return [];
   }
   const localeState = getLocaleState(locale);

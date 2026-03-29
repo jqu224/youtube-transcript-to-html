@@ -150,6 +150,23 @@ export function normalizeCaptionListItems(data) {
 }
 
 /**
+ * Compact rows for Worker logs / optional NDJSON head debug.
+ * @param {object[]} items normalized caption resources
+ */
+export function summarizeCaptionItemsForDebug(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((it) => ({
+    id: it.id,
+    language: it.snippet?.language,
+    trackKind: it.snippet?.trackKind,
+    name: it.snippet?.name,
+    isCC: it.snippet?.isCC,
+  }));
+}
+
+/**
  * @param {object[]} items captions.list items
  * @returns {object | null}
  */
@@ -285,13 +302,33 @@ export async function fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn) {
     listCaptions(videoId, env, fetchFn),
   ]);
 
+  const summary = summarizeCaptionItemsForDebug(items);
+  console.log('[youtube-data-api] captions.list videoId=' + videoId + ' count=' + items.length, summary);
+
   const picked = pickCaptionListItem(items);
   if (!picked?.id) {
+    console.error('[youtube-data-api] pickCaptionListItem returned no id', {videoId, summary});
     throw new Error('No caption tracks returned from YouTube Data API for this video.');
   }
 
-  const vtt = await downloadCaptionVtt(picked.id, env, fetchFn);
+  console.log('[youtube-data-api] picked caption track', {
+    videoId,
+    captionId: picked.id,
+    language: picked.snippet?.language,
+    trackKind: picked.snippet?.trackKind,
+  });
+
+  let vtt;
+  try {
+    vtt = await downloadCaptionVtt(picked.id, env, fetchFn);
+    console.log('[youtube-data-api] captions.download ok bytes=' + (vtt && vtt.length));
+  } catch (e) {
+    console.error('[youtube-data-api] captions.download failed', picked.id, e);
+    throw e;
+  }
+
   const entries = parseWebVttToEntries(vtt);
+  console.log('[youtube-data-api] parseWebVttToEntries cueCount=' + entries.length);
   if (!entries.length) {
     throw new Error('Caption file parsed to zero cues.');
   }
@@ -305,6 +342,13 @@ export async function fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn) {
       language: lang,
       source: 'youtube-data-api-captions',
       entries,
+    },
+    _workspaceDebug: {
+      videoId,
+      captionList: summary,
+      pickedCaptionId: picked.id,
+      pickedLanguage: lang,
+      cueCount: entries.length,
     },
   };
 }

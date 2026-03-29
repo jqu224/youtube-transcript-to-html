@@ -152,6 +152,8 @@ The Worker calls `GET https://www.googleapis.com/youtube/v3/captions?part=snippe
 
 If `YOUTUBE_KEY` or `YOUTUBE_ACCESS_TOKEN` is missing, the Worker falls back to the legacy **watch-page + timedtext** path in `youtube.js`.
 
+**Debug:** open the app with `?workspaceDebug=1` (e.g. `http://127.0.0.1:8788/?workspaceDebug=1`). The browser console logs each NDJSON stream event; the Worker logs `captions.list` / download steps; the first stream line may include `workspaceDebug` with the caption id list and picked track when using the Data API.
+
 Optional (Worker + `npm run gemini:ping` when using SiliconFlow locally):
 
 ```bash
