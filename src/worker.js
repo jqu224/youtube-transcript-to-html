@@ -183,6 +183,9 @@ function streamWorkspaceNdjson(url, fetchFn, env) {
     async start(controller) {
       try {
         const data = await fetchWorkspaceData(url, fetchFn, env);
+        if (!data || !data.video || !data.transcript) {
+          throw new Error('Workspace response missing video or transcript.');
+        }
         const entries = normalizeTranscriptEntries(data.transcript.entries || []);
         const workspacePayload = makeWorkspacePayload({
           video: data.video,
@@ -244,6 +247,9 @@ function streamTranscriptNdjson(url, fetchFn, env) {
     async start(controller) {
       try {
         const data = await fetchWorkspaceData(url, fetchFn, env);
+        if (!data || !data.video || !data.transcript) {
+          throw new Error('Workspace response missing video or transcript.');
+        }
         const entries = normalizeTranscriptEntries(data.transcript.entries || []);
 
         controller.enqueue(

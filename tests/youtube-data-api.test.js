@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 
 import {
   isYoutubeDataApiConfigured,
+  normalizeCaptionListItems,
   parseIso8601DurationSeconds,
   parseWebVttToEntries,
   pickCaptionListItem,
@@ -35,6 +36,34 @@ describe('pickCaptionListItem', () => {
       {id: 'b', snippet: {language: 'zh-Hans', trackKind: 'standard'}},
     ]);
     expect(picked.id).toBe('b');
+  });
+
+  it('ignores items without top-level id', () => {
+    const picked = pickCaptionListItem([
+      {snippet: {language: 'en'}},
+      {id: 'x', snippet: {language: 'de'}},
+    ]);
+    expect(picked.id).toBe('x');
+  });
+});
+
+describe('normalizeCaptionListItems', () => {
+  it('filters to caption resources with id', () => {
+    const items = normalizeCaptionListItems({
+      kind: 'youtube#captionListResponse',
+      items: [
+        {kind: 'youtube#caption', id: 'cid1', snippet: {language: 'en'}},
+        {kind: 'youtube#caption', snippet: {language: 'fr'}},
+        null,
+      ],
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe('cid1');
+  });
+
+  it('returns empty for non-array items', () => {
+    expect(normalizeCaptionListItems({items: null})).toEqual([]);
+    expect(normalizeCaptionListItems({})).toEqual([]);
   });
 });
 

@@ -7,7 +7,8 @@
 
 import {normalizeTranscriptEntries} from './render-model.js';
 
-const API_BASE = 'https://youtube.googleapis.com/youtube/v3';
+/** Official v3 base (same resource paths as youtube.googleapis.com). */
+const API_BASE = 'https://www.googleapis.com/youtube/v3';
 
 const CAPTION_LANG_PREFERENCE = ['zh-Hans', 'zh-Hant', 'zh-HK', 'zh-TW', 'zh-CN', 'zh', 'en'];
 
@@ -126,7 +127,26 @@ export async function listCaptions(videoId, env, fetchFn = fetch) {
       `YouTube captions.list failed (${response.status}): ${data?.error?.message || JSON.stringify(data).slice(0, 280)}`,
     );
   }
-  return {items: data.items || []};
+  return {items: normalizeCaptionListItems(data)};
+}
+
+/**
+ * captions.list returns { kind, items: youtube#caption[] }; each caption has top-level `id` and `snippet`.
+ * @param {unknown} data
+ * @returns {object[]}
+ */
+export function normalizeCaptionListItems(data) {
+  const raw = data && typeof data === 'object' ? data.items : null;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(
+    (it) =>
+      it &&
+      typeof it === 'object' &&
+      typeof it.id === 'string' &&
+      it.id.length > 0,
+  );
 }
 
 /**
@@ -137,22 +157,26 @@ export function pickCaptionListItem(items) {
   if (!Array.isArray(items) || !items.length) {
     return null;
   }
+  const usable = items.filter((it) => it && typeof it.id === 'string' && it.id.length > 0);
+  if (!usable.length) {
+    return null;
+  }
   const isAsr = (it) => String(it?.snippet?.trackKind || '').toUpperCase() === 'ASR';
 
   for (const code of CAPTION_LANG_PREFERENCE) {
-    const m = items.find((it) => it?.snippet?.language === code && !isAsr(it));
+    const m = usable.find((it) => it?.snippet?.language === code && !isAsr(it));
     if (m) {
       return m;
     }
   }
   for (const code of CAPTION_LANG_PREFERENCE) {
-    const m = items.find((it) => it?.snippet?.language === code);
+    const m = usable.find((it) => it?.snippet?.language === code);
     if (m) {
       return m;
     }
   }
-  const nonAsr = items.find((it) => !isAsr(it));
-  return nonAsr || items[0];
+  const nonAsr = usable.find((it) => !isAsr(it));
+  return nonAsr || usable[0];
 }
 
 /**
@@ -178,7 +202,8 @@ export async function downloadCaptionVtt(captionId, env, fetchFn = fetch) {
     const errText = await response.text().catch(() => response.statusText);
     throw new Error(`YouTube captions.download failed (${response.status}): ${String(errText).slice(0, 280)}`);
   }
-  return response.text();
+  const buf = await response.arrayBuffer();
+  return new TextDecoder('utf-8').decode(buf);
 }
 
 /**
@@ -297,8 +322,8 @@ export async function fetchWorkspaceMetadataViaYoutubeApi(videoId, env, fetchFn)
   ]);
 
   const picked = pickCaptionListItem(items);
-  if (!picked) {
-    throw new Error('No caption tracks returned from YouTube Data API for this video.');
+  if (!picked?.id) {
+    throw new Error('No usable caption tracks returned from YouTube Data API for this video.');
   }
 
   const video = videoFromVideosListItem(videoItem, videoId);

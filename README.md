@@ -148,7 +148,7 @@ YOUTUBE_KEY=your_youtube_data_api_key
 YOUTUBE_ACCESS_TOKEN=your_oauth2_access_token
 ```
 
-The Worker calls `GET https://youtube.googleapis.com/youtube/v3/captions?part=snippet&videoId=…&key=…` with `Authorization: Bearer …`, picks a caption track, then `GET …/captions/{captionId}?key=…&tfmt=vtt` and parses WebVTT. Create an API key in [Google Cloud Console](https://console.cloud.google.com/apis/credentials), enable the **YouTube Data API v3**, and obtain an OAuth 2.0 access token with a scope that allows caption access (for example `https://www.googleapis.com/auth/youtube.force-ssl`). Access tokens expire; use a refresh flow or regenerate the token when uploads fail with `401`/`403`.
+The Worker calls `GET https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=…&key=…` with `Authorization: Bearer …`, picks a caption track (each item has top-level `id` and `snippet`), then `GET https://www.googleapis.com/youtube/v3/captions/{captionId}?key=…&tfmt=vtt` (response is often `application/octet-stream`; we decode as UTF-8 WebVTT) and parses cues. Create an API key in [Google Cloud Console](https://console.cloud.google.com/apis/credentials), enable the **YouTube Data API v3**, and obtain an OAuth 2.0 access token with a scope that allows caption access (for example `https://www.googleapis.com/auth/youtube.force-ssl`). Access tokens expire; use a refresh flow or regenerate the token when uploads fail with `401`/`403`.
 
 If `YOUTUBE_KEY` or `YOUTUBE_ACCESS_TOKEN` is missing, the Worker falls back to the legacy **watch-page + timedtext** path in `youtube.js`.
 

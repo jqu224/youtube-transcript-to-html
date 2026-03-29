@@ -446,7 +446,22 @@ async function consumeWorkspaceNdjsonStream(response) {
   function processLine(line) {
     const msg = JSON.parse(line);
     if (msg.type === 'head' && msg.workspace) {
-      state.workspace = msg.workspace;
+      const ws = msg.workspace;
+      if (!ws.transcript) {
+        ws.transcript = {
+          entries: [],
+          language: '',
+          source: '',
+          pending: true,
+        };
+      }
+      if (!Array.isArray(ws.transcript.entries)) {
+        ws.transcript.entries = [];
+      }
+      if (!ws.video || !ws.video.id) {
+        throw new Error('Workspace head is missing video metadata');
+      }
+      state.workspace = ws;
       state.localized = {
         en: createLocaleCache(),
         zh: createLocaleCache(),
@@ -456,7 +471,7 @@ async function consumeWorkspaceNdjsonStream(response) {
       activateTab(TAB_IDS.summary, true);
       renderWorkspaceMeta();
       renderDetailPaneNotice();
-      mountPlayer(msg.workspace.video.id);
+      mountPlayer(ws.video.id);
       renderTranscriptList();
       if (
         typeof window !== 'undefined' &&
@@ -587,6 +602,10 @@ async function loadWorkspace() {
     setStatus(t('statusLoadingTranscriptFetch'), 'loading');
 
     await consumeWorkspaceNdjsonStream(streamRes);
+
+    if (!state.workspace || !state.workspace.transcript) {
+      throw new Error('Workspace stream did not return a valid head payload');
+    }
 
     primeSourceTranscriptCache(state.workspace.transcript);
     renderWorkspaceMeta();
@@ -865,7 +884,11 @@ async function ensureTranscriptForLocale(locale) {
     return;
   }
 
-  if (state.workspace.transcript && state.workspace.transcript.pending) {
+  if (!state.workspace.transcript) {
+    return;
+  }
+
+  if (state.workspace.transcript.pending) {
     return;
   }
 
