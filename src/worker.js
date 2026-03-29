@@ -70,11 +70,11 @@ export default {
       }
 
       if (request.method === 'POST' && url.pathname === '/api/workspace') {
-        return handleWorkspaceRequest(request, runtimeFetch);
+        return handleWorkspaceRequest(request, runtimeFetch, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/transcript') {
-        return handleTranscriptRequest(request, runtimeFetch);
+        return handleTranscriptRequest(request, runtimeFetch, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/summary/stream') {
@@ -141,7 +141,7 @@ async function handleGeminiPing(_request, env, fetchFn) {
   }
 }
 
-async function handleWorkspaceRequest(request, fetchFn) {
+async function handleWorkspaceRequest(request, fetchFn, env) {
   const requestUrl = new URL(request.url);
   const body = await readJsonBody(request);
   if (!body.url) {
@@ -149,14 +149,14 @@ async function handleWorkspaceRequest(request, fetchFn) {
   }
 
   if (requestUrl.searchParams.get('stream') === '1') {
-    return streamWorkspaceNdjson(body.url, fetchFn);
+    return streamWorkspaceNdjson(body.url, fetchFn, env);
   }
 
-  const workspace = await fetchWorkspaceMetadata(body.url, fetchFn);
+  const workspace = await fetchWorkspaceMetadata(body.url, fetchFn, env);
   return jsonResponse(makeWorkspacePayload(workspace));
 }
 
-async function handleTranscriptRequest(request, fetchFn) {
+async function handleTranscriptRequest(request, fetchFn, env) {
   const requestUrl = new URL(request.url);
   const stream = requestUrl.searchParams.get('stream') === '1';
   const body = await readJsonBody(request);
@@ -165,24 +165,24 @@ async function handleTranscriptRequest(request, fetchFn) {
   }
 
   if (stream) {
-    return streamTranscriptNdjson(body.url, fetchFn);
+    return streamTranscriptNdjson(body.url, fetchFn, env);
   }
 
-  const transcript = await fetchTranscriptPayload(body.url, fetchFn);
+  const transcript = await fetchTranscriptPayload(body.url, fetchFn, env);
   return jsonResponse(makeTranscriptApiPayload(transcript));
 }
 
 /**
  * One YouTube watch fetch, then NDJSON: head line with full workspace JSON, cue chunks, done.
  */
-function streamWorkspaceNdjson(url, fetchFn) {
+function streamWorkspaceNdjson(url, fetchFn, env) {
   const encoder = new TextEncoder();
   const chunkSize = TRANSCRIPT_NDJSON_CHUNK_SIZE;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const data = await fetchWorkspaceData(url, fetchFn);
+        const data = await fetchWorkspaceData(url, fetchFn, env);
         const entries = normalizeTranscriptEntries(data.transcript.entries || []);
         const workspacePayload = makeWorkspacePayload({
           video: data.video,
@@ -236,14 +236,14 @@ function streamWorkspaceNdjson(url, fetchFn) {
 /**
  * Legacy NDJSON for POST /api/transcript?stream=1 — same single watch fetch as workspace stream.
  */
-function streamTranscriptNdjson(url, fetchFn) {
+function streamTranscriptNdjson(url, fetchFn, env) {
   const encoder = new TextEncoder();
   const chunkSize = TRANSCRIPT_NDJSON_CHUNK_SIZE;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const data = await fetchWorkspaceData(url, fetchFn);
+        const data = await fetchWorkspaceData(url, fetchFn, env);
         const entries = normalizeTranscriptEntries(data.transcript.entries || []);
 
         controller.enqueue(

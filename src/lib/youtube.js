@@ -1,4 +1,10 @@
 import {normalizeTranscriptEntries} from './render-model.js';
+import {
+  fetchTranscriptPayloadViaYoutubeApi,
+  fetchWorkspaceDataViaYoutubeApi,
+  fetchWorkspaceMetadataViaYoutubeApi,
+  isYoutubeDataApiConfigured,
+} from './youtube-data-api.js';
 
 const WATCH_BASE_URL = 'https://www.youtube.com/watch?v=';
 const SEARCH_BASE_URL = 'https://www.youtube.com/results?search_query=';
@@ -66,8 +72,16 @@ async function loadWatchPageAndPlayerResponse(videoId, fetchFn) {
  * One watch-page fetch: video metadata + caption language hint only (no timedtext download).
  * Transcript cues load via {@link fetchTranscriptPayload}.
  */
-export async function fetchWorkspaceMetadata(input, fetchFn = fetch) {
+/**
+ * @param {string} input
+ * @param {typeof fetch} [fetchFn]
+ * @param {Record<string, string | undefined>} [env] Pass Worker env; when `YOUTUBE_KEY` + `YOUTUBE_ACCESS_TOKEN` are set, uses YouTube Data API (no watch-page scrape).
+ */
+export async function fetchWorkspaceMetadata(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
+  if (env && isYoutubeDataApiConfigured(env)) {
+    return fetchWorkspaceMetadataViaYoutubeApi(videoId, env, fetchFn);
+  }
   const {playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
   const tracks = extractCaptionTracks(playerResponse);
   if (!tracks.length) {
@@ -88,8 +102,11 @@ export async function fetchWorkspaceMetadata(input, fetchFn = fetch) {
 /**
  * Fetches caption JSON (and may re-fetch the watch page). Used by POST /api/transcript.
  */
-export async function fetchTranscriptPayload(input, fetchFn = fetch) {
+export async function fetchTranscriptPayload(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
+  if (env && isYoutubeDataApiConfigured(env)) {
+    return fetchTranscriptPayloadViaYoutubeApi(videoId, env, fetchFn);
+  }
   const {videoPage, playerResponse} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
   return fetchTranscriptFromPage({
     videoId,
@@ -99,9 +116,12 @@ export async function fetchTranscriptPayload(input, fetchFn = fetch) {
   });
 }
 
-/** Single request: metadata + full transcript (one watch-page fetch). */
-export async function fetchWorkspaceData(input, fetchFn = fetch) {
+/** Single request: metadata + full transcript (one watch-page fetch, or Data API when configured). */
+export async function fetchWorkspaceData(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
+  if (env && isYoutubeDataApiConfigured(env)) {
+    return fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn);
+  }
   const {videoPage, playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
   const transcript = await fetchTranscriptFromPage({
     videoId,

@@ -72,6 +72,7 @@ generationControls --> peopleTab
 ### Server
 - `src/worker.js`: request routing and API surface.
 - `src/lib/youtube.js`: YouTube ID parsing, watch-page parsing, caption extraction, search parsing.
+- `src/lib/youtube-data-api.js`: optional [YouTube Data API v3](https://developers.google.com/youtube/v3) `captions.list` + `captions.download` (no `youtube.com/watch` scrape) when `YOUTUBE_KEY` and `YOUTUBE_ACCESS_TOKEN` are set.
 - `src/lib/gemini.js`: Google Gemini streaming and JSON helpers.
 - `src/lib/siliconflow.js`: optional [SiliconFlow](https://siliconflow.cn) `/v1/messages` for local dev when `AI_ENV=local`.
 - `src/lib/llm.js`: routes between Gemini (default) and SiliconFlow for Worker requests.
@@ -140,6 +141,17 @@ GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
+Optional — load captions via **YouTube Data API** instead of scraping the watch page (set both in `.dev.vars` or Cloudflare Worker secrets):
+
+```bash
+YOUTUBE_KEY=your_youtube_data_api_key
+YOUTUBE_ACCESS_TOKEN=your_oauth2_access_token
+```
+
+The Worker calls `GET https://youtube.googleapis.com/youtube/v3/captions?part=snippet&videoId=…&key=…` with `Authorization: Bearer …`, picks a caption track, then `GET …/captions/{captionId}?key=…&tfmt=vtt` and parses WebVTT. Create an API key in [Google Cloud Console](https://console.cloud.google.com/apis/credentials), enable the **YouTube Data API v3**, and obtain an OAuth 2.0 access token with a scope that allows caption access (for example `https://www.googleapis.com/auth/youtube.force-ssl`). Access tokens expire; use a refresh flow or regenerate the token when uploads fail with `401`/`403`.
+
+If `YOUTUBE_KEY` or `YOUTUBE_ACCESS_TOKEN` is missing, the Worker falls back to the legacy **watch-page + timedtext** path in `youtube.js`.
+
 Optional (Worker + `npm run gemini:ping` when using SiliconFlow locally):
 
 ```bash
@@ -176,7 +188,7 @@ Current automated coverage focuses on:
 - render-model helpers
 
 ## Known Limitations
-- YouTube transcript and search parsing relies on public page structures, so upstream markup changes can break adapters.
+- YouTube transcript and search parsing relies on public page structures unless you configure the Data API keys above; upstream markup changes can break the scrape path.
 - The summary stream is the strongest experience today; the secondary tabs are intentionally built with graceful fallbacks.
 - Person detail enrichment prefers Wikipedia plus search links rather than a fully curated knowledge graph.
 - The client sanitizes summary HTML, but the app still assumes model output stays within the requested semantic tag set.
