@@ -76,7 +76,7 @@ const LOCALE_DATA = {
     statusGeminiOkLoadingTranscript: 'Gemini API OK · Loading transcript…',
     statusGeminiCheckFailed: 'Gemini API check failed',
     statusApiHtmlInsteadOfJson:
-      'Got HTML instead of JSON — open this app from your Wrangler dev URL (npm run dev, e.g. http://127.0.0.1:8788). On Cloudflare, route /api/* to this Worker, not static hosting only',
+      'Got HTML instead of JSON for /api — stay on the same host/port as this page (Wrangler: npm run dev). Do not open the Python proxy port alone; on Cloudflare, route /api/* to this Worker',
     statusLoadingTranscriptFetch: 'Loading transcript...',
     transcriptStreamingProgress: '{loaded} / {total} cues loaded',
     statusWorkspaceReady: 'Workspace ready. Streaming summary...',
@@ -173,7 +173,7 @@ const LOCALE_DATA = {
     statusGeminiOkLoadingTranscript: 'Gemini API 正常 · 正在加载字幕…',
     statusGeminiCheckFailed: 'Gemini API 检查失败',
     statusApiHtmlInsteadOfJson:
-      '收到网页而非接口数据 — 请用 Wrangler 本地地址打开（npm run dev，例如 http://127.0.0.1:8788）。部署到 Cloudflare 时请把 /api/* 指到本 Worker，不要只用静态托管',
+      '接口返回了网页而非 JSON — 请与本页使用同一主机和端口（Wrangler：npm run dev）。不要单独打开 Python 代理端口；线上请把 /api/* 指到本 Worker',
     statusLoadingTranscriptFetch: '正在加载字幕...',
     transcriptStreamingProgress: '已加载 {loaded} / {total} 条字幕',
     statusWorkspaceReady: '工作台已加载，正在生成摘要...',
@@ -1666,19 +1666,43 @@ function t(key) {
 }
 
 /**
- * Reads JSON from a fetch Response. If the body is HTML (SPA fallback or wrong host), throws a clear error.
+ * Reads JSON from a fetch Response. If the body is HTML (SPA fallback, wrong host, or gateway HTML error), throws a clear error.
+ * Uses Content-Type and leading `{` / `[` so valid JSON is never mistaken for HTML (some proxies alter bodies slightly).
  * @param {Response} response
  * @returns {Promise<object>}
  */
 function parseApiJsonResponse(response) {
   return response.text().then(function(text) {
-    const trimmed = text.trim();
+    let trimmed = text.trim();
+    if (trimmed.charCodeAt(0) === 0xfeff) {
+      trimmed = trimmed.slice(1).trim();
+    }
     if (!trimmed.length) {
       throw new Error('Empty API response');
     }
-    if (trimmed.charCodeAt(0) === 60) {
+
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error('Invalid JSON from API: ' + (err.message || String(err)));
+      }
+    }
+
+    const first = trimmed.charCodeAt(0);
+    if (first === 123 || first === 91) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error('Invalid JSON: ' + (err.message || String(err)));
+      }
+    }
+
+    if (first === 60) {
       throw new Error(t('statusApiHtmlInsteadOfJson'));
     }
+
     try {
       return JSON.parse(trimmed);
     } catch (err) {
