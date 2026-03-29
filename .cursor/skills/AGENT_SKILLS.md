@@ -31,4 +31,4 @@
 Read: .cursor/skills/<skill-folder>/SKILL.md
 ```
 
-> These are repo-local skills only. Global skills at `~/.cursor/skills-cursor/` are separate and not listed here.
+> This manifest lists only repo-approved tracked skills. Other ignored local skill folders may exist on a machine, but they are intentionally not published through git.

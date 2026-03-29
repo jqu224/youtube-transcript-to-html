@@ -64,3 +64,13 @@
 
 - **User asked**: The top controls like `YouTube URL`, `Tone`, and `Length` still stayed in English after clicking `EN / 中文`.
 - **LLM did**: Traced the issue to fragile client-side form relabeling, switched the locale updater to explicit label-node updates plus select-option rebuilding, and added a focused test for localized option generation.
+
+## Skills Manifest Cleanup
+
+- **What**: Removed selected local-only skills from the tracked manifest so they stay machine-local instead of being advertised through git.
+- **Files Changed**: `.cursor/skills/AGENT_SKILLS.md`
+
+### Dialog Summary
+
+- **User asked**: Keep `ui-ux-pro-max`, `nodejs-coding`, and `coding-essentials` local-only and make sure the tracked repo state no longer exposes them.
+- **LLM did**: Confirmed the folders were already ignored by git, removed those entries from the tracked manifest, and verified `ref/image.png` plus `ref/html-example.png` remain tracked in the branch.
