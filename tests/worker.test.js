@@ -14,7 +14,7 @@ describe('worker asset routes', () => {
     expect(script.headers.get('content-type')).toContain('javascript');
   });
 
-  it('returns gemini ping failure when GEMINI_API_KEY is unset', async () => {
+  it('returns ping failure when GEMINI_API_KEY is unset and not using local SiliconFlow', async () => {
     const response = await worker.fetch(
       new Request('https://example.com/api/gemini/ping', {
         method: 'POST',
@@ -27,6 +27,21 @@ describe('worker asset routes', () => {
     const payload = await response.json();
     expect(payload.ok).toBe(false);
     expect(payload.error).toMatch(/GEMINI_API_KEY/i);
+  });
+
+  it('returns ping failure when AI_ENV is local but SILICONFLOW_API_KEY is unset', async () => {
+    const response = await worker.fetch(
+      new Request('https://example.com/api/gemini/ping', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+      }),
+      {AI_ENV: 'local'},
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toMatch(/SILICONFLOW_API_KEY/i);
   });
 
   it('rejects speaker transcript stream without rawMarkdown', async () => {

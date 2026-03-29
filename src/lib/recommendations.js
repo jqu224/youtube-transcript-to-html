@@ -1,10 +1,9 @@
-import {generateGeminiJson} from './gemini.js';
+import {generateLlmJson} from './llm.js';
 import {buildRecommendationQuery, buildRelatedVideosPrompt} from './prompt.js';
 import {searchYouTubeVideos} from './youtube.js';
 
 export async function buildRelatedVideosTab({
-  apiKey,
-  model,
+  env,
   video,
   transcriptEntries,
   options,
@@ -26,9 +25,7 @@ export async function buildRelatedVideosTab({
   }
 
   try {
-    const result = await generateGeminiJson({
-      apiKey,
-      model,
+    const result = await generateLlmJson(env, {
       prompt: buildRelatedVideosPrompt({
         video,
         transcriptEntries,

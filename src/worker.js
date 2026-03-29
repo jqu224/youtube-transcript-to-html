@@ -1,8 +1,7 @@
-import {streamGeminiText, generateGeminiJson, pingGemini} from './lib/gemini.js';
+import {generateLlmJson, pingLlm, streamLlmText} from './lib/llm.js';
 import {buildMindmapPrompt, buildSummaryPrompt} from './lib/prompt.js';
 import {buildSpeakerTranscriptPrompt} from './lib/speaker-transcript.js';
 import {
-  DEFAULT_GEMINI_MODEL,
   makeTranscriptApiPayload,
   makeWorkspacePayload,
   normalizeGenerationOptions,
@@ -114,7 +113,17 @@ export default {
 };
 
 async function handleGeminiPing(_request, env, fetchFn) {
-  if (!env.GEMINI_API_KEY) {
+  const wantsLocal = String(env.AI_ENV || '')
+    .toLowerCase()
+    .trim() === 'local';
+  if (wantsLocal && !env.SILICONFLOW_API_KEY) {
+    return jsonResponse({
+      ok: false,
+      error:
+        'AI_ENV is local but SILICONFLOW_API_KEY is not set. Add it in config/gemini.local.json / .dev.vars.',
+    });
+  }
+  if (wantsLocal === false && !env.GEMINI_API_KEY) {
     return jsonResponse({
       ok: false,
       error: 'GEMINI_API_KEY is not configured on this Worker. Add it in the Cloudflare dashboard or .dev.vars for local dev.',
@@ -122,17 +131,12 @@ async function handleGeminiPing(_request, env, fetchFn) {
   }
 
   try {
-    const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-    await pingGemini({
-      apiKey: env.GEMINI_API_KEY,
-      model,
-      fetchFn,
-    });
-    return jsonResponse({ok: true, model});
+    const out = await pingLlm(env, fetchFn);
+    return jsonResponse({ok: true, model: out.model, provider: out.provider});
   } catch (error) {
     return jsonResponse({
       ok: false,
-      error: error.message || 'Gemini ping failed.',
+      error: error.message || 'LLM ping failed.',
     });
   }
 }
@@ -242,9 +246,7 @@ async function handleSpeakerTranscriptStream(request, env, fetchFn) {
       const send = createSseSender(controller);
       try {
         send('status', {message: 'Connected to Gemini speaker transcript stream.', kind: 'loading'});
-        await streamGeminiText({
-          apiKey: env.GEMINI_API_KEY,
-          model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+        await streamLlmText(env, {
           prompt,
           fetchFn,
           onTextChunk(text) {
@@ -286,9 +288,7 @@ async function handleSummaryStream(request, env, fetchFn) {
       const send = createSseSender(controller);
       try {
         send('status', {message: 'Connected to Gemini summary stream.', kind: 'loading'});
-        await streamGeminiText({
-          apiKey: env.GEMINI_API_KEY,
-          model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+        await streamLlmText(env, {
           prompt,
           fetchFn,
           onTextChunk(text) {
@@ -315,9 +315,7 @@ async function handleSummaryStream(request, env, fetchFn) {
 
 async function handleMindmapTab(request, env, fetchFn) {
   const body = await readJsonBody(request);
-  const result = await generateGeminiJson({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+  const result = await generateLlmJson(env, {
     prompt: buildMindmapPrompt({
       video: body.video,
       transcriptEntries: body.transcript?.entries || [],
@@ -331,8 +329,7 @@ async function handleMindmapTab(request, env, fetchFn) {
 async function handleRelatedTab(request, env, fetchFn) {
   const body = await readJsonBody(request);
   const result = await buildRelatedVideosTab({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     video: body.video,
     transcriptEntries: body.transcript?.entries || [],
     options: normalizeGenerationOptions(body.options),
@@ -344,8 +341,7 @@ async function handleRelatedTab(request, env, fetchFn) {
 async function handlePeopleTab(request, env, fetchFn) {
   const body = await readJsonBody(request);
   const result = await buildPeopleTab({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     video: body.video,
     transcriptEntries: body.transcript?.entries || [],
     options: normalizeGenerationOptions(body.options),
@@ -360,8 +356,7 @@ async function handlePersonDetailRequest(request, env, fetchFn) {
     return jsonResponse({error: 'Person name and video metadata are required.'}, 400);
   }
   const result = await buildPersonDetail({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     personName: body.personName,
     video: body.video,
     transcriptEntries: body.transcript?.entries || [],
@@ -379,8 +374,7 @@ async function handleTranscriptTranslationRequest(request, env, fetchFn) {
 
   const options = normalizeGenerationOptions(body.options);
   const result = await translateTranscript({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     transcriptEntries: body.transcript.entries,
     targetLanguage: options.language,
     fetchFn,

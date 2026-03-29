@@ -435,8 +435,8 @@ async function fetchTranscriptNdjsonStream(url, signal) {
     signal: signal,
   });
   if (!response.ok) {
-    const errPayload = await response.json().catch(function() {
-      return {};
+    const errPayload = await parseApiJsonResponse(response).catch(function(e) {
+      return {error: e.message || 'Transcript load failed.'};
     });
     throw new Error(errPayload.error || 'Transcript load failed.');
   }
@@ -662,8 +662,8 @@ async function runSummaryStream() {
     });
 
     if (!response.ok || !response.body) {
-      const payload = await response.json().catch(function() {
-        return {};
+      const payload = await parseApiJsonResponse(response).catch(function(e) {
+        return {error: e.message || 'Summary stream failed.'};
       });
       throw new Error(payload.error || 'Summary stream failed.');
     }
@@ -776,7 +776,7 @@ async function loadTabData(tabId) {
       }),
       signal: controller.signal,
     });
-    const payload = await response.json();
+    const payload = await parseApiJsonResponse(response);
     if (!response.ok) {
       throw new Error(payload.error || 'Tab load failed.');
     }
@@ -844,7 +844,7 @@ async function loadPersonDetail(personName) {
       }),
       signal: controller.signal,
     });
-    const payload = await response.json();
+    const payload = await parseApiJsonResponse(response);
     if (!response.ok) {
       throw new Error(payload.error || 'Person detail failed.');
     }
@@ -1627,7 +1627,7 @@ async function requestTranscriptTranslation(locale, localeState) {
       }),
       signal: controller.signal,
     });
-    const payload = await response.json();
+    const payload = await parseApiJsonResponse(response);
     if (!response.ok) {
       throw new Error(payload.error || 'Transcript translation failed.');
     }
@@ -1667,7 +1667,7 @@ function t(key) {
 
 /**
  * Reads JSON from a fetch Response. If the body is HTML (SPA fallback, wrong host, or gateway HTML error), throws a clear error.
- * Uses Content-Type and leading `{` / `[` so valid JSON is never mistaken for HTML (some proxies alter bodies slightly).
+ * Uses Content-Type and leading brace or bracket (ASCII 123 or 91) so valid JSON is never mistaken for HTML (some proxies alter bodies slightly).
  * @param {Response} response
  * @returns {Promise<object>}
  */

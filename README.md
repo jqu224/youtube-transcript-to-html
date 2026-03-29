@@ -72,7 +72,9 @@ generationControls --> peopleTab
 ### Server
 - `src/worker.js`: request routing and API surface.
 - `src/lib/youtube.js`: YouTube ID parsing, watch-page parsing, caption extraction, search parsing.
-- `src/lib/gemini.js`: Gemini streaming and JSON helpers.
+- `src/lib/gemini.js`: Google Gemini streaming and JSON helpers.
+- `src/lib/siliconflow.js`: optional [SiliconFlow](https://siliconflow.cn) `/v1/messages` for local dev when `AI_ENV=local`.
+- `src/lib/llm.js`: routes between Gemini (default) and SiliconFlow for Worker requests.
 - `src/lib/speaker-transcript.js`: baoyu-style speaker transcript prompt (`speaker-transcript.md` bundled as JSON).
 - `src/lib/prompt.js`: prompt builders for summary and derived tabs.
 - `src/lib/recommendations.js`: related-video ranking flow.
@@ -112,6 +114,8 @@ npm install
 
 **Production:** configure `GEMINI_API_KEY` as a Worker secret in the Cloudflare dashboard (`env.GEMINI_API_KEY`); do not rely on `config/gemini.local.json` on the server.
 
+**Local dev — SiliconFlow (optional):** if Google Generative Language API is unreachable from your network, copy [`config/gemini.local.siliconflow.example.json`](config/gemini.local.siliconflow.example.json) to **`config/gemini.local.json`**, set `SILICONFLOW_API_KEY`, and keep **`AI_ENV` as `local`**. `npm run dev` syncs those vars into `.dev.vars`; the Worker uses [`src/lib/siliconflow.js`](src/lib/siliconflow.js) instead of Gemini. Rotate any key that was ever pasted into chat or committed.
+
 ### 3. Run locally
 
 ```bash
@@ -136,7 +140,16 @@ GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
-If a key was ever committed to git or shared in chat, **rotate it** in [Google AI Studio](https://aistudio.google.com/apikey) and update only local `config/gemini.local.json` or `.dev.vars`.
+Optional (Worker + `npm run gemini:ping` when using SiliconFlow locally):
+
+```bash
+AI_ENV=local
+SILICONFLOW_API_KEY=your_siliconflow_key
+SILICONFLOW_MODEL=Pro/zai-org/GLM-4.7
+SILICONFLOW_MESSAGES_URL=https://api.siliconflow.cn/v1/messages
+```
+
+If a key was ever committed to git or shared in chat, **rotate it** in [Google AI Studio](https://aistudio.google.com/apikey) or your SiliconFlow account and update only local `config/gemini.local.json` or `.dev.vars`.
 
 ## Baoyu speaker pipeline (local CLI + optional Worker stream)
 

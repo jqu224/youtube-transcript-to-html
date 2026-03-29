@@ -1,12 +1,11 @@
-import {generateGeminiJson} from './gemini.js';
+import {generateLlmJson} from './llm.js';
 import {buildTranscriptTranslationPrompt} from './prompt.js';
 import {normalizeTranscriptEntries, normalizeOutputLanguage} from './render-model.js';
 
 const MAX_TRANSLATION_CHARS = 6000;
 
 export async function translateTranscript({
-  apiKey,
-  model,
+  env,
   transcriptEntries,
   targetLanguage,
   fetchFn = fetch,
@@ -21,9 +20,7 @@ export async function translateTranscript({
   const chunks = chunkTranscriptEntries(normalizedEntries, MAX_TRANSLATION_CHARS);
 
   for (const chunk of chunks) {
-    const result = await generateGeminiJson({
-      apiKey,
-      model,
+    const result = await generateLlmJson(env, {
       prompt: buildTranscriptTranslationPrompt({
         transcriptEntries: chunk,
         targetLanguage: language,

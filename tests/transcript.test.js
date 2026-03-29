@@ -10,8 +10,7 @@ describe('translateTranscript', () => {
     ];
 
     const result = await translateTranscript({
-      apiKey: 'demo-key',
-      model: 'demo-model',
+      env: {GEMINI_API_KEY: 'demo-key', GEMINI_MODEL: 'demo-model'},
       transcriptEntries: entries,
       targetLanguage: 'zh',
       fetchFn: async () => ({
