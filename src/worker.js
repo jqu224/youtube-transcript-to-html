@@ -1,4 +1,4 @@
-import {streamGeminiText, generateGeminiJson} from './lib/gemini.js';
+import {streamGeminiText, generateGeminiJson, pingGemini} from './lib/gemini.js';
 import {buildMindmapPrompt, buildSummaryPrompt} from './lib/prompt.js';
 import {buildSpeakerTranscriptPrompt} from './lib/speaker-transcript.js';
 import {
@@ -66,6 +66,10 @@ export default {
         return pngResponse(LOGO_PNG_BYTES);
       }
 
+      if (request.method === 'POST' && url.pathname === '/api/gemini/ping') {
+        return handleGeminiPing(request, env, runtimeFetch);
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/workspace') {
         return handleWorkspaceRequest(request, runtimeFetch);
       }
@@ -108,6 +112,30 @@ export default {
     }
   },
 };
+
+async function handleGeminiPing(_request, env, fetchFn) {
+  if (!env.GEMINI_API_KEY) {
+    return jsonResponse({
+      ok: false,
+      error: 'GEMINI_API_KEY is not configured on this Worker. Add it in the Cloudflare dashboard or .dev.vars for local dev.',
+    });
+  }
+
+  try {
+    const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+    await pingGemini({
+      apiKey: env.GEMINI_API_KEY,
+      model,
+      fetchFn,
+    });
+    return jsonResponse({ok: true, model});
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      error: error.message || 'Gemini ping failed.',
+    });
+  }
+}
 
 async function handleWorkspaceRequest(request, fetchFn) {
   const body = await readJsonBody(request);

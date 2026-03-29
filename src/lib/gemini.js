@@ -87,6 +87,48 @@ export async function generateGeminiJson({
   return parsePossiblyFencedJson(text);
 }
 
+/**
+ * Minimal generateContent call to verify the API key and model work (Worker-side).
+ */
+export async function pingGemini({
+  apiKey,
+  model = DEFAULT_GEMINI_MODEL,
+  fetchFn = fetch,
+}) {
+  ensureApiKey(apiKey);
+  const endpoint = `${GEMINI_BASE_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetchFn(endpoint, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [{text: 'Reply with the single word OK'}],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 16,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await safeReadText(response);
+    throw new Error(`Gemini ping failed (${response.status}): ${message}`);
+  }
+
+  const data = await response.json();
+  const text = extractGeminiText(data);
+  if (!text || !String(text).trim()) {
+    throw new Error('Gemini ping returned empty text.');
+  }
+  return {model};
+}
+
 function buildGeminiRequestBody(prompt, temperature) {
   return {
     contents: [

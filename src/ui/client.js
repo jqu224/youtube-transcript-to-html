@@ -72,6 +72,9 @@ const LOCALE_DATA = {
     statusPasteUrl: 'Please paste a YouTube URL first',
     statusLoadingWorkspace: 'Loading video metadata and transcript...',
     statusLoadingWorkspaceMeta: 'Loading video metadata...',
+    statusLoadingGeminiAndMeta: 'Verifying Gemini API and loading video metadata…',
+    statusGeminiOkLoadingTranscript: 'Gemini API OK · Loading transcript…',
+    statusGeminiCheckFailed: 'Gemini API check failed',
     statusLoadingTranscriptFetch: 'Loading transcript...',
     transcriptStreamingProgress: '{loaded} / {total} cues loaded',
     statusWorkspaceReady: 'Workspace ready. Streaming summary...',
@@ -164,6 +167,9 @@ const LOCALE_DATA = {
     statusPasteUrl: '请先粘贴 YouTube 链接',
     statusLoadingWorkspace: '正在加载视频信息和字幕...',
     statusLoadingWorkspaceMeta: '正在加载视频信息...',
+    statusLoadingGeminiAndMeta: '正在验证 Gemini API 并加载视频信息…',
+    statusGeminiOkLoadingTranscript: 'Gemini API 正常 · 正在加载字幕…',
+    statusGeminiCheckFailed: 'Gemini API 检查失败',
     statusLoadingTranscriptFetch: '正在加载字幕...',
     transcriptStreamingProgress: '已加载 {loaded} / {total} 条字幕',
     statusWorkspaceReady: '工作台已加载，正在生成摘要...',
@@ -287,6 +293,19 @@ const refs = {
   peopleDepth: document.getElementById('people-depth'),
 };
 
+let transcriptStreamRenderRaf = null;
+
+function scheduleTranscriptStreamRender() {
+  if (transcriptStreamRenderRaf) {
+    return;
+  }
+  transcriptStreamRenderRaf = window.requestAnimationFrame(function() {
+    transcriptStreamRenderRaf = null;
+    renderWorkspaceMeta();
+    renderTranscriptList();
+  });
+}
+
 init();
 
 function init() {
@@ -400,19 +419,6 @@ async function toggleLocale() {
 
   renderTabLoading(state.activeTab);
   await loadTabData(state.activeTab);
-}
-
-let transcriptStreamRenderRaf = null;
-
-function scheduleTranscriptStreamRender() {
-  if (transcriptStreamRenderRaf) {
-    return;
-  }
-  transcriptStreamRenderRaf = window.requestAnimationFrame(function() {
-    transcriptStreamRenderRaf = null;
-    renderWorkspaceMeta();
-    renderTranscriptList();
-  });
 }
 
 async function fetchTranscriptNdjsonStream(url, signal) {
@@ -532,15 +538,30 @@ async function loadWorkspace() {
   state.requests.workspace = controller;
   refs.loadButton.disabled = true;
   refs.regenerateButton.disabled = true;
-  setStatus(t('statusLoadingWorkspaceMeta'), 'loading');
+  setStatus(t('statusLoadingGeminiAndMeta'), 'loading');
 
   try {
-    const response = await fetch('/api/workspace', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({url: url}),
-      signal: controller.signal,
+    const [pingRes, response] = await Promise.all([
+      fetch('/api/gemini/ping', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        signal: controller.signal,
+      }),
+      fetch('/api/workspace', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({url: url}),
+        signal: controller.signal,
+      }),
+    ]);
+
+    const pingPayload = await pingRes.json().catch(function() {
+      return {ok: false, error: t('statusGeminiCheckFailed')};
     });
+    if (!pingPayload.ok) {
+      throw new Error(pingPayload.error || t('statusGeminiCheckFailed'));
+    }
+
     const parseStart = typeof performance !== 'undefined' ? performance.now() : 0;
     const payload = await response.json();
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
@@ -549,6 +570,8 @@ async function loadWorkspace() {
     if (!response.ok) {
       throw new Error(payload.error || 'Workspace load failed.');
     }
+
+    setStatus(t('statusGeminiOkLoadingTranscript'), 'loading');
 
     state.workspace = payload;
     state.localized = {
