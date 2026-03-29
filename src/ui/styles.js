@@ -1,4 +1,6 @@
 export const APP_STYLES = `
+[hidden] { display: none !important; }
+
 :root {
   --app-bg: #f4f6fb;
   --panel-bg: rgba(255, 255, 255, 0.94);
@@ -439,8 +441,14 @@ button:hover {
 
 .transcript-item p {
   margin: 0;
-  line-height: 1.55;
-  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--text-primary) 85%, var(--text-secondary) 15%);
+}
+
+.transcript-item.is-active p {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .tab-strip {
@@ -594,8 +602,10 @@ body[data-theme="dark"] .locale-toggle {
 
 .summary-frame h2 {
   margin: 38px 0 16px;
+  padding-bottom: 10px;
   font-size: calc(1.6rem * var(--font-scale));
   line-height: 1.25;
+  border-bottom: 2px solid var(--panel-border);
 }
 
 .summary-frame h3 {
@@ -617,6 +627,11 @@ body[data-theme="dark"] .locale-toggle {
 
 .summary-frame strong {
   font-weight: 760;
+}
+
+.summary-frame li > strong:first-child {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .summary-frame blockquote {
