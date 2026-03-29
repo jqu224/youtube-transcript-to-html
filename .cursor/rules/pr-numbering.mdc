@@ -1,0 +1,24 @@
+---
+description: Reuse a single ascending PR number across each PR branch
+alwaysApply: true
+---
+
+# PR Numbering
+
+When starting work for a new PR, assign the next ascending PR number `x` by checking the most recent prior PR title or commit subject that uses `[PR-y]`.
+
+- If the latest seen number is `[PR-4]`, the next new PR number is `5`
+- Reuse that same `x` for the whole branch until the PR is finished
+- Do not invent a fresh number for later commits on the same PR branch
+
+## Formats
+
+- Git branch name: use a git-safe form like `pr-5-short-summary`
+- Commit subject: use `[PR-5] short summary`
+- PR title: use `[PR-5] short summary`
+
+## Quick Rule
+
+- New PR branch: increment to the next number once
+- Same branch, later commits: keep the same number
+- Only increment again when starting a different new PR branch

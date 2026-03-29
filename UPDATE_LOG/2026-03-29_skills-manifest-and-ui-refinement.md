@@ -74,3 +74,23 @@
 
 - **User asked**: Keep `ui-ux-pro-max`, `nodejs-coding`, and `coding-essentials` local-only and make sure the tracked repo state no longer exposes them.
 - **LLM did**: Confirmed the folders were already ignored by git, removed those entries from the tracked manifest, and verified `ref/image.png` plus `ref/html-example.png` remain tracked in the branch.
+
+## PR Numbering Rule
+
+- **What**: Added an always-on repo rule for assigning the next ascending `[PR-x]` number to each new PR branch and reusing that same number across branch name, commit subjects, and PR title.
+- **Files Changed**: `.cursor/rules/pr-numbering.mdc`
+
+### Dialog Summary
+
+- **User asked**: Add a repo rule so each new PR uses the next `[PR-x]` number, while keeping the same `x` for the whole branch.
+- **LLM did**: Inferred a git-safe branch format, documented reuse of the same PR number within a branch, and added a concise always-apply rule with examples.
+
+## Global Command Migration
+
+- **What**: Moved reusable Cursor command files out of the repo and into the user-global commands folder so they can be reused across projects.
+- **Files Changed**: `.gitignore`
+
+### Dialog Summary
+
+- **User asked**: Move `.cursor/commands` to the global level so the commands can be reused in other repos.
+- **LLM did**: Created `~/.cursor/commands`, copied `beforeafter.md` and `go-ahead.md` there, removed the repo-local command files, and ignored `.cursor/commands/` in this repo to prevent re-tracking.

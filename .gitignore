@@ -15,3 +15,6 @@ ref/
 # Ignore repo-local skills folder contents, but keep the agent skills manifest
 .cursor/skills/*
 !.cursor/skills/AGENT_SKILLS.md
+
+# Keep reusable Cursor commands global, not repo-local
+.cursor/commands/
