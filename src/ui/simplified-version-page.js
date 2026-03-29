@@ -1,0 +1,53 @@
+import {FAVICON_DATA_URI} from './brand.js';
+
+export function renderSimplifiedVersionTranscriptPage() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Simplified version</title>
+    <meta
+      name="description"
+      content="Stream YouTube captions in chunks—aligned with the YouTube transcript skill workflow."
+    >
+    <link rel="icon" type="image/svg+xml" href="${FAVICON_DATA_URI}">
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body class="simplified-version-body" data-theme="light">
+    <div class="simplified-version-shell">
+      <header class="simplified-version-header">
+        <a class="simplified-version-back" href="/">← AI workspace</a>
+        <h1>Simplified version</h1>
+        <p class="simplified-version-lead">Paste a YouTube URL. Captions stream in as they arrive (same API as the main app)</p>
+      </header>
+
+      <div class="simplified-version-controls">
+        <label for="simplified-version-url">YouTube URL</label>
+        <div class="simplified-version-input-row">
+          <input
+            id="simplified-version-url"
+            name="simplified-version-url"
+            type="url"
+            placeholder="https://www.youtube.com/watch?v=…"
+            spellcheck="false"
+            autocomplete="off"
+          >
+          <button type="button" id="simplified-version-load" class="primary-button">Load transcript</button>
+        </div>
+        <p id="simplified-version-status" class="simplified-version-status" role="status" aria-live="polite"></p>
+      </div>
+
+      <section class="simplified-version-video-panel" id="simplified-version-video-panel" hidden>
+        <h2 id="simplified-version-video-title"></h2>
+        <p id="simplified-version-video-meta" class="simplified-version-video-meta"></p>
+      </section>
+
+      <section class="simplified-version-transcript-wrap">
+        <div id="simplified-version-transcript" class="simplified-version-transcript" tabindex="-1"></div>
+      </section>
+    </div>
+    <script src="/assets/simplified-version.js" defer></script>
+  </body>
+</html>`;
+}

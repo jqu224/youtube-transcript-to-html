@@ -12,7 +12,7 @@ Remove trailing periods from all UI chrome text. Keep them only in body content.
 **UI chrome (no period):**
 - Labels: `YouTube URL`, `Tone`, `Section Density`
 - Buttons: `Generate`, `Copy`, `EN / 中文`
-- Headings / titles: `YouTube Caption → AI workspace`
+- Hero wordmark (decorative): `/ YouTube Transcript To AI Notes /` (no separate `h1` line; description body stays below)
 - Taglines / subtitles: `Paste a URL. Stream a live summary…` ← exception: mid-copy sentence breaks are fine, but the **final** label string has no trailing period
 - Status / toast messages: `Ready`, `Generating summary…`, `Error fetching transcript`
 - Placeholder text: `https://www.youtube.com/watch?v=…`

@@ -1,8 +1,9 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 
 import {
   extractJsonAssignment,
   extractVideoId,
+  fetchTranscriptFromPage,
   parseJson3Transcript,
   pickCaptionTrack,
 } from '../src/lib/youtube.js';
@@ -55,6 +56,63 @@ describe('pickCaptionTrack', () => {
     ]);
 
     expect(track.languageCode).toBe('zh-Hans');
+  });
+});
+
+describe('fetchTranscriptFromPage', () => {
+  it('falls back to the local transcript helper when timedtext parsing fails', async () => {
+    const fetchFn = vi.fn(async (url) => {
+      if (String(url).startsWith('https://www.youtube.com/api/timedtext')) {
+        return {
+          ok: true,
+          async json() {
+            throw new SyntaxError('Unexpected end of JSON input');
+          },
+        };
+      }
+
+      if (String(url).startsWith('http://127.0.0.1:8791/youtube-transcript')) {
+        return {
+          ok: true,
+          async json() {
+            return {
+              language: 'en',
+              source: 'local-transcript-proxy',
+              entries: [
+                {id: 'cue-1', startMs: 0, durationMs: 1200, text: 'Hello from fallback'},
+              ],
+            };
+          },
+        };
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`);
+    });
+    fetchFn.localProxyBaseUrl = 'http://127.0.0.1:8791';
+
+    const transcript = await fetchTranscriptFromPage({
+      videoId: 'xRh2sVcNXQ8',
+      videoPage: '',
+      playerResponse: {
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: [
+              {
+                languageCode: 'en',
+                baseUrl: 'https://www.youtube.com/api/timedtext?v=xRh2sVcNXQ8',
+              },
+            ],
+          },
+        },
+      },
+      fetchFn,
+    });
+
+    expect(transcript.source).toBe('local-transcript-proxy');
+    expect(transcript.entries[0]).toMatchObject({
+      id: 'cue-1',
+      text: 'Hello from fallback',
+    });
   });
 });
 

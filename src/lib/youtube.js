@@ -2,13 +2,15 @@ import {normalizeTranscriptEntries} from './render-model.js';
 
 const WATCH_BASE_URL = 'https://www.youtube.com/watch?v=';
 const SEARCH_BASE_URL = 'https://www.youtube.com/results?search_query=';
+const WATCH_PAGE_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
 export function extractVideoId(input) {
   if (!input) {
     throw new Error('A YouTube URL or video ID is required.');
   }
 
-  const trimmed = String(input).trim();
+  const trimmed = String(input).replace(/\\/g, '').trim();
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
     return trimmed;
   }
@@ -47,8 +49,7 @@ export function buildEmbedUrl(videoId) {
   return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=https://example.com`;
 }
 
-export async function fetchWorkspaceData(input, fetchFn = fetch) {
-  const videoId = extractVideoId(input);
+async function loadWatchPageAndPlayerResponse(videoId, fetchFn) {
   const videoPage = await fetchYouTubeWatchPage(videoId, fetchFn);
   const playerResponse = extractJsonAssignment(videoPage, 'var ytInitialPlayerResponse = ')
     || extractJsonAssignment(videoPage, 'ytInitialPlayerResponse = ');
@@ -58,6 +59,50 @@ export async function fetchWorkspaceData(input, fetchFn = fetch) {
   }
 
   const video = extractVideoMetadata(playerResponse, videoId);
+  return { videoPage, playerResponse, video };
+}
+
+/**
+ * One watch-page fetch: video metadata + caption language hint only (no timedtext download).
+ * Transcript cues load via {@link fetchTranscriptPayload}.
+ */
+export async function fetchWorkspaceMetadata(input, fetchFn = fetch) {
+  const videoId = extractVideoId(input);
+  const {playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
+  const tracks = extractCaptionTracks(playerResponse);
+  if (!tracks.length) {
+    throw new Error('This video does not expose any captions.');
+  }
+  const selectedTrack = pickCaptionTrack(tracks);
+  return {
+    video,
+    transcript: {
+      language: selectedTrack.languageCode || selectedTrack.name?.simpleText || '',
+      source: '',
+      entries: [],
+      pending: true,
+    },
+  };
+}
+
+/**
+ * Fetches caption JSON (and may re-fetch the watch page). Used by POST /api/transcript.
+ */
+export async function fetchTranscriptPayload(input, fetchFn = fetch) {
+  const videoId = extractVideoId(input);
+  const {videoPage, playerResponse} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
+  return fetchTranscriptFromPage({
+    videoId,
+    videoPage,
+    playerResponse,
+    fetchFn,
+  });
+}
+
+/** Single request: metadata + full transcript (one watch-page fetch). */
+export async function fetchWorkspaceData(input, fetchFn = fetch) {
+  const videoId = extractVideoId(input);
+  const {videoPage, playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
   const transcript = await fetchTranscriptFromPage({
     videoId,
     videoPage,
@@ -87,16 +132,69 @@ export async function fetchTranscriptFromPage({videoId, videoPage, playerRespons
     throw new Error(`Failed to fetch transcript (${response.status}).`);
   }
 
-  const data = await response.json();
-  const entries = parseJson3Transcript(data);
+  let entries = [];
+  try {
+    const data = await response.json();
+    entries = parseJson3Transcript(data);
+  } catch (error) {
+    const fallbackTranscript = await fetchTranscriptFromLocalHelper({
+      videoId,
+      languageCode: selectedTrack.languageCode || '',
+      fetchFn,
+    });
+    if (fallbackTranscript) {
+      return fallbackTranscript;
+    }
+    throw error;
+  }
 
   if (!entries.length) {
+    const fallbackTranscript = await fetchTranscriptFromLocalHelper({
+      videoId,
+      languageCode: selectedTrack.languageCode || '',
+      fetchFn,
+    });
+    if (fallbackTranscript) {
+      return fallbackTranscript;
+    }
     throw new Error('The transcript was empty after parsing.');
   }
 
   return {
     language: selectedTrack.languageCode || selectedTrack.name?.simpleText || '',
     source: 'youtube-captions',
+    entries,
+  };
+}
+
+async function fetchTranscriptFromLocalHelper({videoId, languageCode, fetchFn}) {
+  const proxyBaseUrl = fetchFn?.localProxyBaseUrl;
+  if (!proxyBaseUrl) {
+    return null;
+  }
+
+  const helperUrl = new URL(`${proxyBaseUrl}/youtube-transcript`);
+  helperUrl.searchParams.set('videoId', videoId);
+  if (languageCode) {
+    helperUrl.searchParams.set('language', languageCode);
+  }
+
+  const response = await fetchFn(helperUrl.toString(), {
+    headers: defaultYoutubeHeaders(),
+  }).catch(() => null);
+  if (!response || !response.ok) {
+    return null;
+  }
+
+  const payload = await response.json().catch(() => null);
+  const entries = normalizeTranscriptEntries(payload?.entries || []);
+  if (!entries.length) {
+    return null;
+  }
+
+  return {
+    language: payload.language || languageCode || '',
+    source: payload.source || 'local-transcript-proxy',
     entries,
   };
 }
@@ -166,12 +264,18 @@ export function extractCaptionTracks(playerResponse) {
 export function pickCaptionTrack(tracks = []) {
   const preference = ['zh-Hans', 'zh-Hant', 'zh-HK', 'zh-TW', 'zh-CN', 'zh', 'en'];
   for (const code of preference) {
+    const match = tracks.find((track) => track.languageCode === code && track.kind !== 'asr');
+    if (match) {
+      return match;
+    }
+  }
+  for (const code of preference) {
     const match = tracks.find((track) => track.languageCode === code);
     if (match) {
       return match;
     }
   }
-  return tracks[0];
+  return tracks.find((track) => track.kind !== 'asr') || tracks[0];
 }
 
 export function extractVideoMetadata(playerResponse, videoId) {
@@ -196,7 +300,8 @@ function appendJson3Format(baseUrl) {
 }
 
 async function fetchYouTubeWatchPage(videoId, fetchFn) {
-  const response = await fetchFn(`${WATCH_BASE_URL}${videoId}`, {
+  const watchUrl = `${WATCH_BASE_URL}${videoId}&hl=en&persist_hl=1&has_verified=1&bpctr=9999999999`;
+  const response = await fetchFn(watchUrl, {
     headers: defaultYoutubeHeaders(),
   });
   if (!response.ok) {
@@ -208,6 +313,7 @@ async function fetchYouTubeWatchPage(videoId, fetchFn) {
 function defaultYoutubeHeaders() {
   return {
     'accept-language': 'en-US,en;q=0.9',
+    'user-agent': WATCH_PAGE_USER_AGENT,
   };
 }
 

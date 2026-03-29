@@ -8,6 +8,8 @@ node_modules/
 coverage/
 dist/
 .dev.vars
+config/gemini.local.json
+.venv/
 ref/
 !ref/image.png
 !ref/html-example.png

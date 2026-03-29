@@ -13,12 +13,13 @@ When starting work for a new PR, assign the next ascending PR number `x` by chec
 
 ## Formats
 
-- Git branch name: use a git-safe form like `pr-5-short-summary`
-- Commit subject: use `[PR-5] short summary`
-- PR title: use `[PR-5] short summary`
+- Git branch name: use the same summary words as the PR title, converted to a git-safe slug like `pr-5-move-reusable-commands-out-of-repo`
+- Commit subject: use `[PR-5] move reusable commands out of repo`
+- PR title: use `[PR-5] move reusable commands out of repo`
 
 ## Quick Rule
 
 - New PR branch: increment to the next number once
+- Branch slug: match the PR summary wording as closely as possible
 - Same branch, later commits: keep the same number
 - Only increment again when starting a different new PR branch

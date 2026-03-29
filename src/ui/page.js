@@ -1,4 +1,5 @@
 import {TAB_CONFIG} from '../lib/render-model.js';
+import {APP_TITLE, FAVICON_DATA_URI} from './brand.js';
 
 export function renderAppPage() {
   const tabButtons = TAB_CONFIG.map((tab) => {
@@ -14,11 +15,18 @@ export function renderAppPage() {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title id="app-title">YouTube Transcript To HTML</title>
+    <title id="app-title">${APP_TITLE}</title>
     <meta
       id="app-description"
       name="description"
       content="Live YouTube transcript workspace with streamed Chinese AI summary, mindmap, related videos, and people tabs."
+    >
+    <link rel="icon" type="image/svg+xml" href="${FAVICON_DATA_URI}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
     >
     <link rel="stylesheet" href="/assets/styles.css">
   </head>
@@ -26,19 +34,21 @@ export function renderAppPage() {
     <div class="app-shell">
       <section class="hero-card">
         <div class="hero-title-zone">
-          <div class="hero-wordmark">/ Youtube Transcript To HTML /</div>
-          <button class="locale-toggle" type="button" id="locale-toggle" aria-label="Switch language">
-            <span class="locale-toggle-icon" aria-hidden="true">&#127760;</span>
-            <span id="locale-toggle-text">EN / 中文</span>
-          </button>
-          <div class="hero-topline">
-            <div class="hero-brand">
-              <div>
-                <h1 id="hero-title">YouTube Caption → AI workspace.</h1>
-                <p id="hero-description">Paste a URL. Stream a live summary, mindmap, related videos, and people intel.</p>
-              </div>
-            </div>
+
+          <div class="hero-chrome-cluster">
+            <button class="hero-chrome-btn theme-toggle" type="button" id="theme-toggle" aria-label="Toggle color theme">
+              <span class="material-symbols-outlined theme-toggle-sun" aria-hidden="true">light_mode</span>
+              <span class="theme-toggle-sep" aria-hidden="true">/</span>
+              <span class="material-symbols-outlined theme-toggle-moon" aria-hidden="true">bedtime</span>
+            </button>
+            <button class="hero-chrome-btn locale-toggle" type="button" id="locale-toggle" aria-label="Switch language">
+              <span class="locale-toggle-icon" aria-hidden="true">&#127760;</span>
+              <span id="locale-toggle-text">EN / 中文</span>
+            </button>
           </div>
+          <div class="hero-topline">
+            <div class="hero-wordmark">/ YouTube Transcript To AI Notes /</div>
+            </div>
         </div>
 
         <div class="control-section">
@@ -102,7 +112,7 @@ export function renderAppPage() {
       <section class="workspace-card">
         <div class="workspace-grid">
           <div class="left-column">
-            <section class="panel">
+            <section class="panel panel--video">
               <header class="panel-header">
                 <div>
                   <h2 id="player-title">Live Video</h2>
@@ -125,7 +135,7 @@ export function renderAppPage() {
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel panel--transcript">
               <header class="panel-header">
                 <div>
                   <h2 id="transcript-title">Live Transcript</h2>
@@ -148,7 +158,7 @@ export function renderAppPage() {
                   </label>
                 </div>
               </header>
-              <div class="panel-body">
+              <div class="panel-body transcript-scroll" id="transcript-scroll">
                 <div class="transcript-list" id="transcript-list">
                   <div class="empty-state">Transcript cues will become clickable once the workspace is loaded.</div>
                 </div>
@@ -179,45 +189,8 @@ export function renderAppPage() {
                   </div>
                 </div>
 
-                <aside class="analysis-sidebar">
-                  <section class="sidebar-section">
-                    <div class="section-label" id="style-section-title">Realtime Style</div>
-                    <div class="mini-controls">
-                      <label id="label-theme">
-                        Theme
-                        <select id="theme-select">
-                          <option value="light">Light</option>
-                          <option value="dark">Dark</option>
-                        </select>
-                      </label>
-                      <label id="label-font-scale">
-                        Font Scale
-                        <input id="font-scale" type="range" min="0.85" max="1.45" step="0.05" value="1">
-                      </label>
-                      <label id="label-content-width">
-                        Content Width
-                        <input id="content-width" type="range" min="680" max="1120" step="20" value="880">
-                      </label>
-                      <label id="label-panel-ratio">
-                        Panel Ratio
-                        <input id="panel-ratio" type="range" min="30" max="55" step="1" value="38">
-                      </label>
-                      <label id="label-paragraph-spacing">
-                        Paragraph Space
-                        <input id="paragraph-spacing" type="range" min="0.8" max="1.5" step="0.05" value="1">
-                      </label>
-                      <label id="label-emphasis-density">
-                        Emphasis
-                        <select id="emphasis-density">
-                          <option value="balanced">Balanced</option>
-                          <option value="quiet">Quiet</option>
-                          <option value="high">High</option>
-                        </select>
-                      </label>
-                    </div>
-                  </section>
-
-                  <section class="sidebar-section">
+                <aside class="analysis-sidebar" hidden>
+                  <section class="sidebar-section" id="generation-controls-section" hidden>
                     <div class="section-label" id="generation-section-title">Generation Controls</div>
                     <div class="mini-controls">
                       <label id="label-title-style">
@@ -255,7 +228,7 @@ export function renderAppPage() {
                     </div>
                   </section>
 
-                  <section class="sidebar-section">
+                  <section class="sidebar-section" id="detail-pane-section" hidden>
                     <div class="section-label" id="detail-pane-title">Detail Pane</div>
                     <div class="detail-scroll" id="detail-pane">
                       <div class="notice-card">Click a person in the People tab to load wiki-style details and related videos.</div>
@@ -272,5 +245,5 @@ export function renderAppPage() {
     <script src="https://www.youtube.com/iframe_api"></script>
     <script type="module" src="/assets/app.js"></script>
   </body>
-</html>`;   
+</html>`;
 }

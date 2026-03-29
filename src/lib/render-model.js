@@ -129,19 +129,36 @@ export function summarizeTranscript(entries, maxItems = 24) {
   }));
 }
 
+/** NDJSON stream: each chunk line carries up to this many cues (client parses incrementally). */
+export const TRANSCRIPT_NDJSON_CHUNK_SIZE = 100;
+
 export function makeWorkspacePayload({ video, transcript }) {
+  const pending = Boolean(transcript?.pending);
   return {
     video,
     transcript: {
-      entries: normalizeTranscriptEntries(transcript?.entries || []),
+      entries: pending ? [] : normalizeTranscriptEntries(transcript?.entries || []),
       language: transcript?.language || '',
-      source: transcript?.source || '',
+      source: pending ? '' : transcript?.source || '',
+      pending,
     },
     tabConfig: TAB_CONFIG,
     defaults: {
       style: DEFAULT_STYLE_OPTIONS,
       generation: DEFAULT_GENERATION_OPTIONS,
       model: DEFAULT_GEMINI_MODEL,
+    },
+  };
+}
+
+/** Response body for POST /api/transcript after cues are loaded. */
+export function makeTranscriptApiPayload(transcript) {
+  return {
+    transcript: {
+      entries: normalizeTranscriptEntries(transcript?.entries || []),
+      language: transcript?.language || '',
+      source: transcript?.source || '',
+      pending: false,
     },
   };
 }

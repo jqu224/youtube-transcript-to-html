@@ -5,9 +5,18 @@
   "type": "module",
   "description": "Cloudflare Worker that turns YouTube transcripts into a live AI analysis workspace.",
   "scripts": {
-    "dev": "wrangler dev",
+    "predev": "node scripts/sync-gemini-local-to-dev-vars.mjs",
+    "sync-gemini": "node scripts/sync-gemini-local-to-dev-vars.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:worker": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "vitest run"
+    "test": "vitest run",
+    "speakers:sync-prompt": "node scripts/sync-speaker-prompt.mjs",
+    "speakers:stream": "node scripts/stream-speaker-transcript.mjs",
+    "speakers:fetch": "bun .cursor/skills/baoyu-youtube-transcript/scripts/main.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.47.0"
   },
   "devDependencies": {
     "vitest": "^3.2.4",

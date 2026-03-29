@@ -1,10 +1,13 @@
 import {describe, expect, it} from 'vitest';
 
 import {
+  makeTranscriptApiPayload,
+  makeWorkspacePayload,
   normalizeGenerationOptions,
   normalizeStyleOptions,
   serializeTranscriptForPrompt,
   summarizeTranscript,
+  TRANSCRIPT_NDJSON_CHUNK_SIZE,
 } from '../src/lib/render-model.js';
 
 describe('render model helpers', () => {
@@ -32,6 +35,29 @@ describe('render model helpers', () => {
     expect(style.contentWidth).toBe(1120);
     expect(style.panelRatio).toBe(30);
     expect(style.paragraphSpacing).toBe(0.8);
+  });
+
+  it('uses 100-cue NDJSON chunks for transcript streaming', () => {
+    expect(TRANSCRIPT_NDJSON_CHUNK_SIZE).toBe(100);
+  });
+
+  it('workspace payload omits cue entries while transcript is pending', () => {
+    const payload = makeWorkspacePayload({
+      video: {id: 'abc'},
+      transcript: {language: 'en', entries: [], pending: true},
+    });
+    expect(payload.transcript.pending).toBe(true);
+    expect(payload.transcript.entries).toEqual([]);
+  });
+
+  it('transcript API payload normalizes entries and clears pending', () => {
+    const payload = makeTranscriptApiPayload({
+      language: 'en',
+      source: 'youtube-captions',
+      entries: [{id: 'cue-1', startMs: 0, durationMs: 100, text: 'Hi'}],
+    });
+    expect(payload.transcript.pending).toBe(false);
+    expect(payload.transcript.entries[0].text).toBe('Hi');
   });
 
   it('serializes and summarizes transcript entries', () => {

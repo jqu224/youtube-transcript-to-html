@@ -1,4 +1,4 @@
-# YouTube Transcript To HTML
+# YouTube Transcript To AI Notes
 
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f38020?logo=cloudflare&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-ESM-43853d?logo=node.js&logoColor=white)
@@ -73,6 +73,7 @@ generationControls --> peopleTab
 - `src/worker.js`: request routing and API surface.
 - `src/lib/youtube.js`: YouTube ID parsing, watch-page parsing, caption extraction, search parsing.
 - `src/lib/gemini.js`: Gemini streaming and JSON helpers.
+- `src/lib/speaker-transcript.js`: baoyu-style speaker transcript prompt (`speaker-transcript.md` bundled as JSON).
 - `src/lib/prompt.js`: prompt builders for summary and derived tabs.
 - `src/lib/recommendations.js`: related-video ranking flow.
 - `src/lib/people.js`: people extraction and detail enrichment.
@@ -103,13 +104,13 @@ generationControls --> peopleTab
 npm install
 ```
 
-### 2. Create local Worker env vars
+### 2. Local Gemini key (not committed)
 
-```bash
-cp .dev.vars.example .dev.vars
-```
+**Recommended:** copy [`config/gemini.local.example.json`](config/gemini.local.example.json) to **`config/gemini.local.json`** and set `GEMINI_API_KEY`. That file is [gitignored](.gitignore). On `npm run dev`, **`predev`** runs [`scripts/sync-gemini-local-to-dev-vars.mjs`](scripts/sync-gemini-local-to-dev-vars.mjs) and merges those values into **`.dev.vars`** so Wrangler can read them.
 
-Then add your Gemini API key to `.dev.vars`.
+**Alternative:** `cp .dev.vars.example .dev.vars` and edit the key there (`.dev.vars` is also gitignored).
+
+**Production:** configure `GEMINI_API_KEY` as a Worker secret in the Cloudflare dashboard (`env.GEMINI_API_KEY`); do not rely on `config/gemini.local.json` on the server.
 
 ### 3. Run locally
 
@@ -123,17 +124,32 @@ npm run dev
 npm run deploy
 ```
 
+Deploying from **GitHub** uses Wrangler in CI (see [docs/cloudflare-github-deploy.md](docs/cloudflare-github-deploy.md)). The app HTML is produced by **`src/worker.js`**, not by a static `index.html` at the site root; the repo [index.html](index.html) is only an explanatory stub if you open the project as static files.
+
+### Dependencies
+
+- **`@google/genai`** is installed for the repo (see `package.json`). The Worker currently calls Gemini via **`fetch`** in [`src/lib/gemini.js`](src/lib/gemini.js) for predictable Workers compatibility; you can migrate to the SDK later if you prefer.
+
 ## Environment
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
+If a key was ever committed to git or shared in chat, **rotate it** in [Google AI Studio](https://aistudio.google.com/apikey) and update only local `config/gemini.local.json` or `.dev.vars`.
+
+## Baoyu speaker pipeline (local CLI + optional Worker stream)
+
+For captions via the vendored baoyu skill and **streaming Gemini** speaker labeling, see [docs/baoyu-speaker-pipeline.md](docs/baoyu-speaker-pipeline.md). Quick commands: `npm run speakers:fetch`, `npm run speakers:stream`, `npm run speakers:sync-prompt`.
+
 ## Scripts
 ```bash
 npm run dev
 npm run test
 npm run deploy
+npm run speakers:fetch -- '<youtube-url>' --speakers
+npm run speakers:stream -- --raw path/to/transcript.md
+npm run speakers:sync-prompt
 ```
 
 ## Verification

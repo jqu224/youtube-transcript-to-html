@@ -6,12 +6,19 @@ const TAB_IDS = {
   people: 'people',
 };
 
+const GEMINI_ENABLED = false;
+
+const TRANSCRIPT_ROW_EST_PX = 30;
+const TRANSCRIPT_VIRTUAL_OVERSCAN = 14;
+const TRANSCRIPT_VIRTUAL_THRESHOLD = 140;
+/** How often we sync transcript highlight + auto-follow to the player (ms). Lower = tighter A/V sync; smooth scroll was causing multi-second lag */
+const CUE_POLL_INTERVAL_MS = 100;
+
 const LOCALE_DATA = {
   en: {
     htmlLang: 'en',
-    metaTitle: 'YouTube Transcript To HTML',
+    metaTitle: 'YouTube AI Workspace',
     metaDescription: 'Live YouTube transcript workspace with bilingual AI summary, mindmap, related videos, people tabs, and transcript switching.',
-    heroTitle: 'YouTube Caption → AI workspace',
     heroDescription: 'Paste a URL. Stream a live summary, mindmap, related videos, and people intel',
     videoUrlLabel: 'YouTube URL',
     videoUrlPlaceholder: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
@@ -31,13 +38,6 @@ const LOCALE_DATA = {
     transcriptWindow: 'Transcript Window',
     aiWorkspace: 'AI Workspace',
     workspaceSubtitle: 'Summary is the default tab. Mindmap, related videos, and people load on demand',
-    realtimeStyle: 'Realtime Style',
-    theme: 'Theme',
-    fontScale: 'Font Scale',
-    contentWidth: 'Content Width',
-    panelRatio: 'Panel Ratio',
-    paragraphSpacing: 'Paragraph Space',
-    emphasisDensity: 'Emphasis',
     generationControls: 'Generation Controls',
     titleStyle: 'Title Style',
     quoteEmphasis: 'Quote Emphasis',
@@ -46,6 +46,7 @@ const LOCALE_DATA = {
     detailPane: 'Detail Pane',
     localeToggleAria: 'Switch language',
     localeToggleText: 'EN / 中文',
+    themeToggleAria: 'Toggle light or dark theme',
     tabLabels: {
       summary: 'AI Summary',
       mindmap: 'Mindmap',
@@ -59,8 +60,6 @@ const LOCALE_DATA = {
       relatedFocus: {adjacent: 'Adjacent topics', 'same-speakers': 'Same speakers', 'deeper-dive': 'Deeper dive'},
       autoFollow: {on: 'On', off: 'Off'},
       transcriptWindow: {all: 'All cues', short: 'Compact'},
-      theme: {light: 'Light', dark: 'Dark'},
-      emphasisDensity: {balanced: 'Balanced', quiet: 'Quiet', high: 'High'},
       titleStyle: {editorial: 'Editorial', plain: 'Plain', bold: 'Bold'},
       quoteEmphasis: {high: 'High', balanced: 'Balanced', low: 'Low'},
       mindmapDepth: {balanced: 'Balanced', deep: 'Deep', overview: 'Overview'},
@@ -72,6 +71,9 @@ const LOCALE_DATA = {
     statusReadyInitial: 'Load a video to begin',
     statusPasteUrl: 'Please paste a YouTube URL first',
     statusLoadingWorkspace: 'Loading video metadata and transcript...',
+    statusLoadingWorkspaceMeta: 'Loading video metadata...',
+    statusLoadingTranscriptFetch: 'Loading transcript...',
+    transcriptStreamingProgress: '{loaded} / {total} cues loaded',
     statusWorkspaceReady: 'Workspace ready. Streaming summary...',
     statusLoadingSummary: 'Streaming editorial AI summary...',
     statusSummaryReady: 'Summary ready. Switch tabs to load more derived views',
@@ -107,9 +109,8 @@ const LOCALE_DATA = {
   },
   zh: {
     htmlLang: 'zh-Hans',
-    metaTitle: 'YouTube Transcript To HTML',
+    metaTitle: 'YouTube AI 工作台',
     metaDescription: '支持中英切换的 YouTube 字幕工作台，可联动切换 AI 摘要、思维导图、相关视频、人物卡与字幕内容。',
-    heroTitle: 'YouTube 字幕 → AI 工作台',
     heroDescription: '粘贴一个链接，实时生成摘要、思维导图、相关视频和人物信息',
     videoUrlLabel: 'YouTube 链接',
     videoUrlPlaceholder: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
@@ -129,13 +130,6 @@ const LOCALE_DATA = {
     transcriptWindow: '字幕窗口',
     aiWorkspace: 'AI 工作区',
     workspaceSubtitle: '默认显示摘要标签页，思维导图、相关视频和人物信息按需加载',
-    realtimeStyle: '实时样式',
-    theme: '主题',
-    fontScale: '字体缩放',
-    contentWidth: '内容宽度',
-    panelRatio: '面板比例',
-    paragraphSpacing: '段落间距',
-    emphasisDensity: '强调程度',
     generationControls: '生成控制',
     titleStyle: '标题风格',
     quoteEmphasis: '引用强调',
@@ -144,6 +138,7 @@ const LOCALE_DATA = {
     detailPane: '详情面板',
     localeToggleAria: '切换语言',
     localeToggleText: 'EN / 中文',
+    themeToggleAria: '切换浅色或深色主题',
     tabLabels: {
       summary: 'AI 摘要',
       mindmap: '思维导图',
@@ -157,8 +152,6 @@ const LOCALE_DATA = {
       relatedFocus: {adjacent: '相近主题', 'same-speakers': '同一讲者', 'deeper-dive': '更深挖'},
       autoFollow: {on: '开启', off: '关闭'},
       transcriptWindow: {all: '全部字幕', short: '紧凑'},
-      theme: {light: '浅色', dark: '深色'},
-      emphasisDensity: {balanced: '平衡', quiet: '克制', high: '高'},
       titleStyle: {editorial: '编辑感', plain: '朴素', bold: '强烈'},
       quoteEmphasis: {high: '高', balanced: '平衡', low: '低'},
       mindmapDepth: {balanced: '平衡', deep: '深入', overview: '总览'},
@@ -170,6 +163,9 @@ const LOCALE_DATA = {
     statusReadyInitial: '加载视频即可开始',
     statusPasteUrl: '请先粘贴 YouTube 链接',
     statusLoadingWorkspace: '正在加载视频信息和字幕...',
+    statusLoadingWorkspaceMeta: '正在加载视频信息...',
+    statusLoadingTranscriptFetch: '正在加载字幕...',
+    transcriptStreamingProgress: '已加载 {loaded} / {total} 条字幕',
     statusWorkspaceReady: '工作台已加载，正在生成摘要...',
     statusLoadingSummary: '正在流式生成 AI 摘要...',
     statusSummaryReady: '摘要已准备好，可切换其他标签页继续加载',
@@ -216,6 +212,7 @@ const state = {
   selectedPerson: null,
   currentCueId: null,
   player: null,
+  pendingVideoId: '',
   youtubeReady: false,
   pollTimer: null,
   styleOptions: {
@@ -230,6 +227,7 @@ const state = {
   summaryStreaming: false,
   requests: {
     workspace: null,
+    transcriptData: null,
     summary: null,
     tab: null,
     person: null,
@@ -241,7 +239,7 @@ const refs = {
   appDescription: document.getElementById('app-description'),
   localeToggle: document.getElementById('locale-toggle'),
   localeToggleText: document.getElementById('locale-toggle-text'),
-  heroTitle: document.getElementById('hero-title'),
+  themeToggle: document.getElementById('theme-toggle'),
   heroDescription: document.getElementById('hero-description'),
   labelVideoUrl: document.getElementById('label-video-url'),
   labelTone: document.getElementById('label-tone'),
@@ -259,21 +257,15 @@ const refs = {
   labelTranscriptWindow: document.getElementById('label-transcript-window'),
   workspaceTitle: document.getElementById('workspace-title'),
   workspaceSubtitle: document.getElementById('workspace-subtitle'),
-  styleSectionTitle: document.getElementById('style-section-title'),
   generationSectionTitle: document.getElementById('generation-section-title'),
   detailPaneTitle: document.getElementById('detail-pane-title'),
-  labelTheme: document.getElementById('label-theme'),
-  labelFontScale: document.getElementById('label-font-scale'),
-  labelContentWidth: document.getElementById('label-content-width'),
-  labelPanelRatio: document.getElementById('label-panel-ratio'),
-  labelParagraphSpacing: document.getElementById('label-paragraph-spacing'),
-  labelEmphasisDensity: document.getElementById('label-emphasis-density'),
   labelTitleStyle: document.getElementById('label-title-style'),
   labelQuoteEmphasis: document.getElementById('label-quote-emphasis'),
   labelMindmapDepth: document.getElementById('label-mindmap-depth'),
   labelPeopleDepth: document.getElementById('label-people-depth'),
   statusLine: document.getElementById('status-line'),
   transcriptList: document.getElementById('transcript-list'),
+  transcriptScroll: document.getElementById('transcript-scroll'),
   transcriptSubtitle: document.getElementById('transcript-subtitle'),
   videoSubtitle: document.getElementById('video-subtitle'),
   videoBadges: document.getElementById('video-badges'),
@@ -285,12 +277,6 @@ const refs = {
   autoFollow: document.getElementById('auto-follow'),
   transcriptWindow: document.getElementById('transcript-window'),
   tabButtons: Array.from(document.querySelectorAll('[data-tab-button]')),
-  themeSelect: document.getElementById('theme-select'),
-  fontScale: document.getElementById('font-scale'),
-  contentWidth: document.getElementById('content-width'),
-  panelRatio: document.getElementById('panel-ratio'),
-  paragraphSpacing: document.getElementById('paragraph-spacing'),
-  emphasisDensity: document.getElementById('emphasis-density'),
   tone: document.getElementById('tone'),
   length: document.getElementById('length'),
   sectionDensity: document.getElementById('section-density'),
@@ -305,24 +291,34 @@ init();
 
 function init() {
   refs.loadButton.addEventListener('click', loadWorkspace);
-  refs.regenerateButton.addEventListener('click', function() {
-    if (state.workspace) {
-      runSummaryStream();
-    }
-  });
-  refs.localeToggle.addEventListener('click', toggleLocale);
+  if (GEMINI_ENABLED) {
+    refs.regenerateButton.addEventListener('click', function() {
+      if (state.workspace) {
+        runSummaryStream();
+      }
+    });
+  } else {
+    refs.regenerateButton.hidden = true;
+  }
+  if (refs.localeToggle) {
+    refs.localeToggle.addEventListener('click', toggleLocale);
+  }
+  if (refs.themeToggle) {
+    refs.themeToggle.addEventListener('click', function() {
+      state.styleOptions.theme = state.styleOptions.theme === 'light' ? 'dark' : 'light';
+      applyStyleState();
+    });
+  }
   refs.tabButtons.forEach(function(button) {
     button.addEventListener('click', function() {
       activateTab(button.dataset.tabButton);
     });
   });
   refs.transcriptWindow.addEventListener('change', renderTranscriptList);
-  bindStyleControl(refs.themeSelect, 'theme');
-  bindStyleControl(refs.fontScale, 'fontScale', parseFloat);
-  bindStyleControl(refs.contentWidth, 'contentWidth', parseFloat);
-  bindStyleControl(refs.panelRatio, 'panelRatio', parseFloat);
-  bindStyleControl(refs.paragraphSpacing, 'paragraphSpacing', parseFloat);
-  bindStyleControl(refs.emphasisDensity, 'emphasisDensity');
+  if (refs.transcriptScroll) {
+    refs.transcriptScroll.addEventListener('scroll', onTranscriptPanelScroll, {passive: true});
+    refs.transcriptScroll.addEventListener('click', onTranscriptCueClick);
+  }
   [
     refs.tone,
     refs.length,
@@ -339,17 +335,23 @@ function init() {
   });
 
   refs.videoUrl.value = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
+  syncYouTubeApiReadyState();
   state.generationOptions = readGenerationOptions();
   applyStyleState();
   applyLocale();
 }
 
 window.onYouTubeIframeAPIReady = function() {
-  state.youtubeReady = true;
-  if (state.workspace) {
-    mountPlayer(state.workspace.video.id);
+  syncYouTubeApiReadyState();
+  if (state.pendingVideoId) {
+    mountPlayer(state.pendingVideoId);
   }
 };
+
+function syncYouTubeApiReadyState() {
+  state.youtubeReady = Boolean(window.YT && typeof window.YT.Player === 'function');
+  return state.youtubeReady;
+}
 
 async function toggleLocale() {
   const nextLocale = state.locale === 'en' ? 'zh' : 'en';
@@ -359,6 +361,7 @@ async function toggleLocale() {
   abortRequest('tab');
   abortRequest('person');
   abortRequest('transcript');
+  abortRequest('transcriptData');
   state.summaryStreaming = false;
   applyLocale();
 
@@ -371,6 +374,11 @@ async function toggleLocale() {
   await ensureTranscriptForCurrentLocale();
   renderTranscriptList();
   renderDetailPane();
+
+  if (!GEMINI_ENABLED) {
+    setStatus('Workspace ready', 'success');
+    return;
+  }
 
   if (state.activeTab === TAB_IDS.summary) {
     if (getLocaleState().summaryHtml) {
@@ -394,6 +402,113 @@ async function toggleLocale() {
   await loadTabData(state.activeTab);
 }
 
+let transcriptStreamRenderRaf = null;
+
+function scheduleTranscriptStreamRender() {
+  if (transcriptStreamRenderRaf) {
+    return;
+  }
+  transcriptStreamRenderRaf = window.requestAnimationFrame(function() {
+    transcriptStreamRenderRaf = null;
+    renderWorkspaceMeta();
+    renderTranscriptList();
+  });
+}
+
+async function fetchTranscriptNdjsonStream(url, signal) {
+  const streamT0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  let firstChunkLogged = false;
+  const response = await fetch('/api/transcript?stream=1', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({url: url}),
+    signal: signal,
+  });
+  if (!response.ok) {
+    const errPayload = await response.json().catch(function() {
+      return {};
+    });
+    throw new Error(errPayload.error || 'Transcript load failed.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  function processLine(line) {
+    const msg = JSON.parse(line);
+    if (msg.type === 'head') {
+      state.workspace.transcript = {
+        language: msg.language || '',
+        source: msg.source || '',
+        entries: [],
+        pending: true,
+        expectedTotal: typeof msg.total === 'number' ? msg.total : 0,
+      };
+      scheduleTranscriptStreamRender();
+      return;
+    }
+    if (msg.type === 'chunk' && Array.isArray(msg.entries)) {
+      state.workspace.transcript.entries = state.workspace.transcript.entries.concat(msg.entries);
+      if (
+        !firstChunkLogged &&
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('workspacePerf') === '1' &&
+        state.workspace.transcript.entries.length > 0
+      ) {
+        firstChunkLogged = true;
+        console.info('[workspacePerf] transcript_first_chunk_ms=' + (performance.now() - streamT0).toFixed(1));
+      }
+      scheduleTranscriptStreamRender();
+      return;
+    }
+    if (msg.type === 'done') {
+      state.workspace.transcript.pending = false;
+      if (state.workspace.transcript.expectedTotal !== undefined) {
+        delete state.workspace.transcript.expectedTotal;
+      }
+      scheduleTranscriptStreamRender();
+    }
+  }
+
+  while (true) {
+    const next = await reader.read();
+    buffer += decoder.decode(next.value || new Uint8Array(0), {stream: !next.done});
+    let idx;
+    while ((idx = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (line) {
+        processLine(line);
+      }
+    }
+    if (next.done) {
+      break;
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) {
+    try {
+      processLine(tail);
+    } catch (err) {
+      throw new Error('Transcript stream ended before completion');
+    }
+  }
+
+  if (state.workspace.transcript.pending) {
+    state.workspace.transcript.pending = false;
+    if (state.workspace.transcript.expectedTotal !== undefined) {
+      delete state.workspace.transcript.expectedTotal;
+    }
+    scheduleTranscriptStreamRender();
+  }
+
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
+    const n = state.workspace.transcript.entries.length;
+    console.info('[workspacePerf] transcript_stream_total_ms=' + (performance.now() - streamT0).toFixed(1) + ' cue_count=' + n);
+  }
+}
+
 async function loadWorkspace() {
   const url = refs.videoUrl.value.trim();
   if (!url) {
@@ -402,16 +517,22 @@ async function loadWorkspace() {
   }
 
   abortRequest('workspace');
+  abortRequest('transcriptData');
   abortRequest('summary');
   abortRequest('tab');
   abortRequest('person');
   abortRequest('transcript');
 
+  const earlyVideoId = quickExtractVideoId(url);
+  if (earlyVideoId) {
+    mountPlayer(earlyVideoId);
+  }
+
   const controller = new AbortController();
   state.requests.workspace = controller;
   refs.loadButton.disabled = true;
   refs.regenerateButton.disabled = true;
-  setStatus(t('statusLoadingWorkspace'), 'loading');
+  setStatus(t('statusLoadingWorkspaceMeta'), 'loading');
 
   try {
     const response = await fetch('/api/workspace', {
@@ -420,7 +541,11 @@ async function loadWorkspace() {
       body: JSON.stringify({url: url}),
       signal: controller.signal,
     });
+    const parseStart = typeof performance !== 'undefined' ? performance.now() : 0;
     const payload = await response.json();
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
+      console.info('[workspacePerf] workspace_json_parse_ms=' + (performance.now() - parseStart).toFixed(1));
+    }
     if (!response.ok) {
       throw new Error(payload.error || 'Workspace load failed.');
     }
@@ -432,24 +557,51 @@ async function loadWorkspace() {
     };
     state.selectedPerson = null;
     state.currentCueId = null;
-    primeSourceTranscriptCache(payload.transcript);
     activateTab(TAB_IDS.summary, true);
     renderWorkspaceMeta();
     renderDetailPaneNotice();
     mountPlayer(payload.video.id);
-    refs.regenerateButton.disabled = false;
-    setStatus(t('statusWorkspaceReady'), 'loading');
+    renderTranscriptList();
+
+    const transcriptController = new AbortController();
+    state.requests.transcriptData = transcriptController;
+    setStatus(t('statusLoadingTranscriptFetch'), 'loading');
+
+    await fetchTranscriptNdjsonStream(url, transcriptController.signal);
+
+    primeSourceTranscriptCache(state.workspace.transcript);
+    renderWorkspaceMeta();
     await ensureTranscriptForCurrentLocale();
     renderTranscriptList();
-    await runSummaryStream();
+    if (GEMINI_ENABLED) {
+      refs.regenerateButton.disabled = false;
+      setStatus(t('statusWorkspaceReady'), 'loading');
+      await runSummaryStream();
+    } else {
+      setStatus('Workspace ready', 'success');
+    }
   } catch (error) {
     if (error.name !== 'AbortError') {
+      if (state.workspace && state.workspace.transcript && state.workspace.transcript.pending) {
+        state.workspace = null;
+        state.localized = {
+          en: createLocaleCache(),
+          zh: createLocaleCache(),
+        };
+        state.selectedPerson = null;
+        state.currentCueId = null;
+        renderWorkspaceMeta();
+        renderTranscriptList();
+        refs.playerPlaceholder.hidden = false;
+        refs.playerStage.hidden = true;
+      }
       setStatus(error.message || 'Workspace load failed.', 'error');
       refs.analysisMain.innerHTML = '<div class="error-state">' + escapeHtml(error.message || 'Workspace load failed.') + '</div>';
     }
   } finally {
     refs.loadButton.disabled = false;
     state.requests.workspace = null;
+    state.requests.transcriptData = null;
   }
 }
 
@@ -573,7 +725,7 @@ async function activateTab(tabId, skipFetch) {
   }
 
   renderTabLoading(tabId);
-  if (!skipFetch) {
+  if (!skipFetch && GEMINI_ENABLED) {
     await loadTabData(tabId);
   }
 }
@@ -694,8 +846,12 @@ async function ensureTranscriptForLocale(locale) {
     return;
   }
 
+  if (state.workspace.transcript && state.workspace.transcript.pending) {
+    return;
+  }
+
   const localeState = getLocaleState(locale);
-  if (localeState.transcriptEntries) {
+  if (localeState.transcriptEntries !== null) {
     return;
   }
 
@@ -704,7 +860,7 @@ async function ensureTranscriptForLocale(locale) {
     return;
   }
 
-  if (getSourceTranscriptLocale() === locale) {
+  if (getSourceTranscriptLocale() === locale || !GEMINI_ENABLED) {
     localeState.transcriptEntries = state.workspace.transcript.entries;
     return;
   }
@@ -731,25 +887,87 @@ function renderWorkspaceMeta() {
     : t('transcriptTranslatedTag');
 
   refs.videoSubtitle.textContent = video.title;
+  const trMeta = state.workspace.transcript;
+  const streaming =
+    trMeta &&
+    trMeta.pending &&
+    typeof trMeta.expectedTotal === 'number' &&
+    trMeta.expectedTotal > 0;
   refs.transcriptSubtitle.textContent = localeState.transcriptLoading
     ? t('transcriptLoadedCountPending')
-    : formatMessage(t('transcriptLoadedCount'), {count: transcriptEntries.length});
+    : streaming
+      ? formatMessage(t('transcriptStreamingProgress'), {
+          loaded: (trMeta.entries && trMeta.entries.length) || 0,
+          total: trMeta.expectedTotal,
+        })
+      : trMeta && trMeta.pending && !(trMeta.entries && trMeta.entries.length)
+        ? t('statusLoadingTranscriptFetch')
+        : formatMessage(t('transcriptLoadedCount'), {count: transcriptEntries.length});
   refs.videoBadges.innerHTML = [
     createPill(video.channelTitle || t('unknownChannel')),
     createPill(formatLength(video.lengthSeconds)),
     createPill((state.workspace.transcript.language || t('autoLanguage')) + ' · ' + transcriptTag),
   ].join('');
   refs.videoMeta.innerHTML =
-    '<div class="notice-card"><strong>' + escapeHtml(video.title) + '</strong><div class="panel-subtitle">' +
-    escapeHtml(video.channelTitle || '') +
-    '</div><div class="person-links"><a class="inline-link" target="_blank" rel="noreferrer" href="' +
-    escapeHtml(video.watchUrl) +
-    '">' + escapeHtml(t('openOnYouTube')) + '</a></div></div>';
+    '<div class="video-meta-bar"><span class="video-meta-channel">' + escapeHtml(video.channelTitle || t('unknownChannel')) +
+    '</span><a class="inline-link" target="_blank" rel="noreferrer" href="' +
+    escapeHtml(video.watchUrl) + '">' + escapeHtml(t('openOnYouTube')) + '</a></div>';
+}
+
+function buildTranscriptCueButtonHtml(entry) {
+  const isActive = entry.id === state.currentCueId;
+  return (
+    '<button class="transcript-item' + (isActive ? ' is-active' : '') + '" type="button" data-cue-id="' + escapeHtml(entry.id) + '">' +
+      '<time>' + escapeHtml(formatTimestamp(entry.startMs)) + '</time>' +
+      '<p>' + escapeHtml(entry.text) + '</p>' +
+    '</button>'
+  );
+}
+
+let transcriptScrollRaf = null;
+
+function onTranscriptPanelScroll() {
+  if (transcriptScrollRaf) {
+    return;
+  }
+  transcriptScrollRaf = window.requestAnimationFrame(function() {
+    transcriptScrollRaf = null;
+    if (!state.workspace) {
+      return;
+    }
+    const entries = getVisibleTranscriptEntries();
+    if (entries.length < TRANSCRIPT_VIRTUAL_THRESHOLD || refs.transcriptWindow.value !== 'all') {
+      return;
+    }
+    renderTranscriptList();
+  });
+}
+
+function onTranscriptCueClick(ev) {
+  const btn = ev.target.closest('button[data-cue-id]');
+  if (!btn || !state.workspace) {
+    return;
+  }
+  const cue = state.workspace.transcript.entries.find(function(entry) {
+    return entry.id === btn.dataset.cueId;
+  });
+  if (cue) {
+    seekToTimestamp(cue.startMs);
+  }
 }
 
 function renderTranscriptList() {
   if (!state.workspace) {
     refs.transcriptList.innerHTML = '<div class="empty-state">' + escapeHtml(t('transcriptEmptyInitial')) + '</div>';
+    return;
+  }
+
+  if (
+    state.workspace.transcript &&
+    state.workspace.transcript.pending &&
+    !(state.workspace.transcript.entries && state.workspace.transcript.entries.length)
+  ) {
+    refs.transcriptList.innerHTML = '<div class="loading-state">' + escapeHtml(t('statusLoadingTranscriptFetch')) + '</div>';
     return;
   }
 
@@ -764,26 +982,54 @@ function renderTranscriptList() {
     return;
   }
 
-  refs.transcriptList.innerHTML = entries.map(function(entry) {
-    const isActive = entry.id === state.currentCueId;
-    return (
-      '<button class="transcript-item' + (isActive ? ' is-active' : '') + '" type="button" data-cue-id="' + escapeHtml(entry.id) + '">' +
-        '<time>' + escapeHtml(formatTimestamp(entry.startMs)) + '</time>' +
-        '<p>' + escapeHtml(entry.text) + '</p>' +
-      '</button>'
-    );
-  }).join('');
+  const scrollEl = refs.transcriptScroll;
+  const useVirtual = Boolean(scrollEl) && entries.length >= TRANSCRIPT_VIRTUAL_THRESHOLD
+    && refs.transcriptWindow.value === 'all';
 
-  Array.from(refs.transcriptList.querySelectorAll('[data-cue-id]')).forEach(function(button) {
-    button.addEventListener('click', function() {
-      const cue = state.workspace.transcript.entries.find(function(entry) {
-        return entry.id === button.dataset.cueId;
+  /* Slice math is mirrored in src/lib/transcript-virtual-window.js (computeTranscriptVirtualWindow) for tests. */
+  if (useVirtual) {
+    const preservedScroll = scrollEl.scrollTop;
+    const ch = scrollEl.clientHeight || 480;
+    const visibleRows = Math.ceil(ch / TRANSCRIPT_ROW_EST_PX) + 2 * TRANSCRIPT_VIRTUAL_OVERSCAN;
+    let start = Math.max(0, Math.floor(preservedScroll / TRANSCRIPT_ROW_EST_PX) - TRANSCRIPT_VIRTUAL_OVERSCAN);
+    let end = Math.min(entries.length, start + visibleRows);
+
+    if (state.currentCueId) {
+      const ci = entries.findIndex(function(e) {
+        return e.id === state.currentCueId;
       });
-      if (cue) {
-        seekToTimestamp(cue.startMs);
+      if (ci !== -1) {
+        if (ci < start) {
+          start = Math.max(0, ci - TRANSCRIPT_VIRTUAL_OVERSCAN);
+          end = Math.min(entries.length, start + visibleRows);
+        } else if (ci >= end) {
+          end = Math.min(entries.length, ci + TRANSCRIPT_VIRTUAL_OVERSCAN + 1);
+          start = Math.max(0, end - visibleRows);
+        }
       }
+    }
+
+    const totalH = entries.length * TRANSCRIPT_ROW_EST_PX;
+    const topPad = start * TRANSCRIPT_ROW_EST_PX;
+    const bottomPad = (entries.length - end) * TRANSCRIPT_ROW_EST_PX;
+
+    let html = '<div class="transcript-virtual" style="min-height:' + totalH + 'px">';
+    html += '<div class="transcript-virtual-spacer" style="height:' + topPad + 'px" aria-hidden="true"></div>';
+    for (let i = start; i < end; i++) {
+      html += buildTranscriptCueButtonHtml(entries[i]);
+    }
+    html += '<div class="transcript-virtual-spacer" style="height:' + bottomPad + 'px" aria-hidden="true"></div>';
+    html += '</div>';
+    refs.transcriptList.innerHTML = html;
+    window.requestAnimationFrame(function() {
+      scrollEl.scrollTop = preservedScroll;
     });
-  });
+    return;
+  }
+
+  refs.transcriptList.innerHTML = entries.map(function(entry) {
+    return buildTranscriptCueButtonHtml(entry);
+  }).join('');
 }
 
 function getVisibleTranscriptEntries() {
@@ -988,23 +1234,31 @@ function renderTabLoading(tabId) {
 }
 
 function mountPlayer(videoId) {
+  state.pendingVideoId = videoId;
   refs.playerPlaceholder.hidden = true;
+
+  if (!syncYouTubeApiReadyState()) {
+    refs.playerStage.hidden = true;
+    return;
+  }
+
   refs.playerStage.hidden = false;
 
-  if (!state.youtubeReady || !window.YT || !window.YT.Player) {
-    refs.playerStage.innerHTML =
-      '<iframe title="YouTube player" src="https://www.youtube.com/embed/' + encodeURIComponent(videoId) + '?autoplay=0&playsinline=1" allowfullscreen></iframe>';
+  if (state.player && typeof state.player.cueVideoById === 'function') {
+    state.player.cueVideoById(videoId);
+    startCuePolling();
     return;
   }
 
-  if (state.player && typeof state.player.loadVideoById === 'function') {
-    state.player.loadVideoById(videoId);
-    return;
-  }
+  const slot = document.createElement('div');
+  slot.style.cssText = 'width:100%;height:100%';
+  refs.playerStage.innerHTML = '';
+  refs.playerStage.appendChild(slot);
 
-  state.player = new window.YT.Player('youtube-player', {
+  state.player = new window.YT.Player(slot, {
     videoId: videoId,
     playerVars: {
+      autoplay: 0,
       playsinline: 1,
       rel: 0,
     },
@@ -1026,40 +1280,51 @@ function startCuePolling() {
     }
     const currentMs = Math.floor(state.player.getCurrentTime() * 1000);
     const entries = state.workspace.transcript.entries;
-    const active = entries.find(function(entry) {
-      return currentMs >= entry.startMs && currentMs < entry.startMs + Math.max(entry.durationMs, 5000);
-    });
+    let active = null;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (currentMs >= entries[i].startMs) {
+        active = entries[i];
+        break;
+      }
+    }
     const nextCueId = active ? active.id : null;
     if (nextCueId && nextCueId !== state.currentCueId) {
       state.currentCueId = nextCueId;
+      if (refs.autoFollow.value === 'on' && refs.transcriptScroll) {
+        const vis = getVisibleTranscriptEntries();
+        const idx = vis.findIndex(function(e) {
+          return e.id === nextCueId;
+        });
+        if (idx !== -1) {
+          const el = refs.transcriptScroll;
+          const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && refs.transcriptWindow.value === 'all';
+          if (useVirtual) {
+            el.scrollTop = Math.max(0, idx * TRANSCRIPT_ROW_EST_PX - el.clientHeight / 2);
+          }
+        }
+      }
       renderTranscriptList();
       if (refs.autoFollow.value === 'on') {
-        const target = refs.transcriptList.querySelector('[data-cue-id="' + CSS.escape(nextCueId) + '"]');
-        if (target) {
-          target.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        const vis = getVisibleTranscriptEntries();
+        const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && refs.transcriptWindow.value === 'all';
+        if (!useVirtual) {
+          const target = refs.transcriptList.querySelector('[data-cue-id="' + CSS.escape(nextCueId) + '"]');
+          if (target) {
+            target.scrollIntoView({block: 'nearest', behavior: 'auto'});
+          }
         }
       }
     }
-  }, 800);
+  }, CUE_POLL_INTERVAL_MS);
 }
 
 function seekToTimestamp(startMs) {
   if (state.player && typeof state.player.seekTo === 'function') {
     state.player.seekTo(startMs / 1000, true);
+    if (typeof state.player.playVideo === 'function') {
+      state.player.playVideo();
+    }
   }
-}
-
-function bindStyleControl(element, key, parser) {
-  element.addEventListener('input', function() {
-    const nextValue = parser ? parser(element.value) : element.value;
-    state.styleOptions[key] = nextValue;
-    applyStyleState();
-  });
-  element.addEventListener('change', function() {
-    const nextValue = parser ? parser(element.value) : element.value;
-    state.styleOptions[key] = nextValue;
-    applyStyleState();
-  });
 }
 
 function applyStyleState() {
@@ -1075,11 +1340,21 @@ function applyLocale() {
   const copy = getCopy();
   document.documentElement.lang = copy.htmlLang;
   document.title = copy.metaTitle;
-  refs.appDescription.setAttribute('content', copy.metaDescription);
-  refs.localeToggle.setAttribute('aria-label', copy.localeToggleAria);
-  refs.localeToggleText.textContent = copy.localeToggleText;
-  refs.heroTitle.textContent = copy.heroTitle;
-  refs.heroDescription.textContent = copy.heroDescription;
+  if (refs.appDescription) {
+    refs.appDescription.setAttribute('content', copy.metaDescription);
+  }
+  if (refs.localeToggle) {
+    refs.localeToggle.setAttribute('aria-label', copy.localeToggleAria);
+  }
+  if (refs.localeToggleText) {
+    refs.localeToggleText.textContent = copy.localeToggleText;
+  }
+  if (refs.themeToggle) {
+    refs.themeToggle.setAttribute('aria-label', copy.themeToggleAria);
+  }
+  if (refs.heroDescription) {
+    refs.heroDescription.textContent = copy.heroDescription;
+  }
   refs.labelVideoUrl.textContent = copy.videoUrlLabel;
   refs.videoUrl.placeholder = copy.videoUrlPlaceholder;
   refs.labelTone.textContent = copy.toneLabel;
@@ -1096,15 +1371,8 @@ function applyLocale() {
   setLabelText(refs.labelTranscriptWindow, copy.transcriptWindow);
   refs.workspaceTitle.textContent = copy.aiWorkspace;
   refs.workspaceSubtitle.textContent = copy.workspaceSubtitle;
-  refs.styleSectionTitle.textContent = copy.realtimeStyle;
   refs.generationSectionTitle.textContent = copy.generationControls;
   refs.detailPaneTitle.textContent = copy.detailPane;
-  setLabelText(refs.labelTheme, copy.theme);
-  setLabelText(refs.labelFontScale, copy.fontScale);
-  setLabelText(refs.labelContentWidth, copy.contentWidth);
-  setLabelText(refs.labelPanelRatio, copy.panelRatio);
-  setLabelText(refs.labelParagraphSpacing, copy.paragraphSpacing);
-  setLabelText(refs.labelEmphasisDensity, copy.emphasisDensity);
   setLabelText(refs.labelTitleStyle, copy.titleStyle);
   setLabelText(refs.labelQuoteEmphasis, copy.quoteEmphasis);
   setLabelText(refs.labelMindmapDepth, copy.mindmapDepth);
@@ -1118,8 +1386,6 @@ function applyLocale() {
   setSelectOptionLabels(refs.relatedFocus, copy.selectOptions.relatedFocus);
   setSelectOptionLabels(refs.autoFollow, copy.selectOptions.autoFollow);
   setSelectOptionLabels(refs.transcriptWindow, copy.selectOptions.transcriptWindow);
-  setSelectOptionLabels(refs.themeSelect, copy.selectOptions.theme);
-  setSelectOptionLabels(refs.emphasisDensity, copy.selectOptions.emphasisDensity);
   setSelectOptionLabels(refs.titleStyle, copy.selectOptions.titleStyle);
   setSelectOptionLabels(refs.quoteEmphasis, copy.selectOptions.quoteEmphasis);
   setSelectOptionLabels(refs.mindmapDepth, copy.selectOptions.mindmapDepth);
@@ -1250,7 +1516,7 @@ function getCurrentTranscriptEntries() {
     return [];
   }
   const localeState = getLocaleState();
-  if (localeState.transcriptEntries) {
+  if (localeState.transcriptEntries !== null) {
     return localeState.transcriptEntries;
   }
   if (getSourceTranscriptLocale() === state.locale) {
@@ -1285,9 +1551,13 @@ function getSourceTranscriptLocale() {
 }
 
 function primeSourceTranscriptCache(transcript) {
+  const entries = transcript?.entries || [];
+  if (!entries.length) {
+    return;
+  }
   const sourceLocale = detectLanguageFamily(transcript?.language);
   if (sourceLocale && state.localized[sourceLocale]) {
-    state.localized[sourceLocale].transcriptEntries = transcript.entries || [];
+    state.localized[sourceLocale].transcriptEntries = entries;
   }
 }
 
@@ -1456,5 +1726,33 @@ function abortRequest(key) {
     current.abort();
     state.requests[key] = null;
   }
+}
+
+function quickExtractVideoId(input) {
+  if (!input) {
+    return null;
+  }
+  const trimmed = String(input).replace(/\\/g, '').trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const url = new URL(trimmed);
+    const v = url.searchParams.get('v');
+    if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
+      return v;
+    }
+    if (url.hostname === 'youtu.be' || url.hostname === 'www.youtu.be') {
+      const id = url.pathname.replace(/^\//, '').split('/')[0];
+      if (/^[a-zA-Z0-9_-]{11}$/.test(id)) {
+        return id;
+      }
+    }
+    const match = url.pathname.match(/\/(?:embed|shorts|live)\/([a-zA-Z0-9_-]{11})/);
+    if (match) {
+      return match[1];
+    }
+  } catch {}
+  return null;
 }
 `;
