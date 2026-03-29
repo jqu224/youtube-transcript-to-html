@@ -14,5 +14,6 @@ This folder keeps short, GitHub-renderable records of meaningful repo work by LL
 
 ## Entries
 
+- [2026-03-29 - skills-manifest-and-ui-refinement](2026-03-29_skills-manifest-and-ui-refinement.md)
 - [2026-03-28 - repo-setup-and-worker-app](2026-03-28_repo-setup-and-worker-app.md)
 - [2026-03-28 00:00:00 - initial-plan](2026-03-28_000000_initial-plan.md)

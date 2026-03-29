@@ -151,3 +151,4 @@
 
 - **User asked**: Make the buttons smaller, enlarge the labels above the dropdowns, and fix the broken hero heading markup.
 - **LLM Updated**: Cleaned the hero HTML, tightened button and field spacing, and increased control-label sizing so the controls look more proportionate.
+

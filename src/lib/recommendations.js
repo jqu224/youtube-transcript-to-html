@@ -10,6 +10,7 @@ export async function buildRelatedVideosTab({
   options,
   fetchFn = fetch,
 }) {
+  const language = options?.language === 'zh' ? 'zh' : 'en';
   const query = buildRecommendationQuery(video);
   const searchResults = await searchYouTubeVideos(query, fetchFn, 12);
   const filteredResults = searchResults.filter((item) => item.videoId !== video.id);
@@ -18,7 +19,9 @@ export async function buildRelatedVideosTab({
     return {
       query,
       recommendations: [],
-      fallbackMessage: '暂时没有抓到可用的 YouTube 搜索结果。',
+      fallbackMessage: language === 'zh'
+        ? '暂时没有抓到可用的 YouTube 搜索结果。'
+        : 'No usable YouTube search results were available yet.',
     };
   }
 
@@ -58,12 +61,18 @@ export async function buildRelatedVideosTab({
   } catch {
     return {
       query,
-      fallbackMessage: '使用候选结果作为保底推荐，因为 AI 排序暂时不可用。',
+      fallbackMessage: language === 'zh'
+        ? '使用候选结果作为保底推荐，因为 AI 排序暂时不可用。'
+        : 'Using the raw candidates as a fallback because AI ranking is temporarily unavailable.',
       recommendations: filteredResults.slice(0, 6).map((item, index) => ({
         ...item,
-        reason: index === 0
-          ? '与当前视频标题和主题最接近。'
-          : '基于标题匹配和频道相关性给出的保底推荐。',
+        reason: language === 'zh'
+          ? (index === 0
+            ? '与当前视频标题和主题最接近。'
+            : '基于标题匹配和频道相关性给出的保底推荐。')
+          : (index === 0
+            ? 'Closest match to the current video title and topic.'
+            : 'Fallback recommendation based on title overlap and channel relevance.'),
         likelihood: Number((0.88 - index * 0.08).toFixed(2)),
       })),
     };

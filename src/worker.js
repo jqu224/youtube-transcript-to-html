@@ -7,6 +7,7 @@ import {
 } from './lib/render-model.js';
 import {buildRelatedVideosTab} from './lib/recommendations.js';
 import {buildPeopleTab, buildPersonDetail} from './lib/people.js';
+import {translateTranscript} from './lib/transcript.js';
 import {fetchWorkspaceData} from './lib/youtube.js';
 import {CLIENT_APP_SOURCE} from './ui/client.js';
 import {renderAppPage} from './ui/page.js';
@@ -51,6 +52,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/person/detail') {
         return handlePersonDetailRequest(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/transcript/translate') {
+        return handleTranscriptTranslationRequest(request, env);
       }
 
       return jsonResponse({error: 'Not found.'}, 404);
@@ -162,6 +167,23 @@ async function handlePersonDetailRequest(request, env) {
     personName: body.personName,
     video: body.video,
     transcriptEntries: body.transcript?.entries || [],
+    options: normalizeGenerationOptions(body.options),
+  });
+  return jsonResponse(result);
+}
+
+async function handleTranscriptTranslationRequest(request, env) {
+  const body = await readJsonBody(request);
+  if (!body.transcript?.entries?.length) {
+    return jsonResponse({error: 'Transcript entries are required.'}, 400);
+  }
+
+  const options = normalizeGenerationOptions(body.options);
+  const result = await translateTranscript({
+    apiKey: env.GEMINI_API_KEY,
+    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    transcriptEntries: body.transcript.entries,
+    targetLanguage: options.language,
   });
   return jsonResponse(result);
 }
