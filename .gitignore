@@ -8,6 +8,7 @@ node_modules/
 coverage/
 dist/
 .dev.vars
+ref/
 
 # Ignore repo-local skills folder contents, but keep the agent skills manifest
 .cursor/skills/*

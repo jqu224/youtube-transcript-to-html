@@ -13,7 +13,7 @@ The app loads the video, fetches captions, streams a Chinese editorial HTML summ
 ## Screenshots
 ### Workspace Layout
 
-![Workspace layout](./ref/layout.png)
+![Workspace layout](./ref/image.png)
 
 ### Summary Style Baseline
 
