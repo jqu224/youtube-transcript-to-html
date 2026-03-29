@@ -51,8 +51,16 @@ export function extractVideoId(input) {
   throw new Error('Could not find a valid YouTube video ID.');
 }
 
-export function buildEmbedUrl(videoId) {
-  return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=https://example.com`;
+/**
+ * @param {string} videoId
+ * @param {string} [pageOrigin] Parent page origin for IFrame API postMessage; omit when unknown (e.g. server metadata)
+ */
+export function buildEmbedUrl(videoId, pageOrigin) {
+  let url = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1`;
+  if (pageOrigin && typeof pageOrigin === 'string' && pageOrigin.trim()) {
+    url += `&origin=${encodeURIComponent(pageOrigin.trim())}`;
+  }
+  return url;
 }
 
 async function loadWatchPageAndPlayerResponse(videoId, fetchFn) {

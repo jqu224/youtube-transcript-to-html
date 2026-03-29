@@ -44,7 +44,7 @@ export function parseIso8601DurationSeconds(iso) {
 }
 
 function buildEmbedUrl(videoId) {
-  return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=https://example.com`;
+  return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1`;
 }
 
 /**

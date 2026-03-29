@@ -1346,6 +1346,7 @@ function mountPlayer(videoId) {
       autoplay: 0,
       playsinline: 1,
       rel: 0,
+      origin: window.location.origin,
     },
     events: {
       onReady: startCuePolling,
