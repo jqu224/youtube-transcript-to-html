@@ -111,7 +111,7 @@ export async function pingGemini({
       ],
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 16,
+        maxOutputTokens: 64,
       },
     }),
   });
@@ -124,9 +124,36 @@ export async function pingGemini({
   const data = await response.json();
   const text = extractGeminiText(data);
   if (!text || !String(text).trim()) {
-    throw new Error('Gemini ping returned empty text.');
+    throw new Error(formatGeminiPingEmptyError(data));
   }
   return {model};
+}
+
+/**
+ * Explains empty model text on HTTP 200 (safety block, finishReason, etc.).
+ * @param {unknown} data
+ * @returns {string}
+ */
+export function formatGeminiPingEmptyError(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const promptFeedback = /** @type {{blockReason?: string, blockReasonMessage?: string}} */ (d.promptFeedback);
+  if (promptFeedback && promptFeedback.blockReason) {
+    const msg = promptFeedback.blockReasonMessage || '';
+    return `Gemini ping returned no text (prompt blocked: ${promptFeedback.blockReason}${msg ? ' — ' + msg : ''})`;
+  }
+  const c0 = Array.isArray(d.candidates) ? d.candidates[0] : null;
+  if (c0 && typeof c0 === 'object') {
+    const finishReason = c0.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      return `Gemini ping returned no text (finishReason: ${finishReason})`;
+    }
+  }
+  try {
+    const snippet = JSON.stringify(data).slice(0, 400);
+    return `Gemini ping returned empty text. Raw response snippet: ${snippet}`;
+  } catch {
+    return 'Gemini ping returned empty text.';
+  }
 }
 
 function buildGeminiRequestBody(prompt, temperature) {
