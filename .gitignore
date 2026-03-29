@@ -9,6 +9,6 @@ coverage/
 dist/
 .dev.vars
 
-# Keep installed UI/UX Pro Max skill data trackable
-!.cursor/skills/ui-ux-pro-max/data/*.csv
-!.cursor/skills/ui-ux-pro-max/data/**/*.csv
+# Ignore repo-local skills folder contents, but keep the agent skills manifest
+.cursor/skills/*
+!.cursor/skills/AGENT_SKILLS.md
