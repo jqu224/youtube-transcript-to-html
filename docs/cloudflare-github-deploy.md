@@ -8,10 +8,11 @@ The repository may include a root [`index.html`](../index.html) only as a **shor
 
 ## Troubleshooting: `Got HTML instead of JSON` when loading a workspace
 
-If `/api/workspace` or `/api/gemini/ping` returns a full HTML document (often starting with `<!DOCTYPE`), the browser is **not** talking to this Worker’s JSON routes. Common cases:
+If `/api/workspace` or `/api/gemini/ping` returns a full HTML document (often starting with `<!DOCTYPE`), the client cannot parse JSON. Common cases:
 
 - **Local:** Open the app at the **Wrangler dev** URL printed in the terminal (e.g. `http://127.0.0.1:8788`), not the Python transcript proxy port (`8791`) and not a static file server.
 - **Cloudflare Pages + static assets:** If the site is deployed as **Pages** with SPA fallback, `/api/*` may return `index.html`. Route API traffic to this **Worker** (same zone, correct routes) or use a Worker-only hostname for the app.
+- **Cloudflare edge error HTML:** If the **Worker throws** or the edge returns a **5xx HTML** page (e.g. “Worker threw exception”), the response is still HTML, not `application/json`. Fix the underlying exception in **Workers → Logs**, redeploy, and retry — routing alone will not fix a crashing Worker.
 
 ## Where `npm install` runs
 

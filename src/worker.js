@@ -12,7 +12,7 @@ import {buildRelatedVideosTab} from './lib/recommendations.js';
 import {buildPeopleTab, buildPersonDetail} from './lib/people.js';
 import {createRuntimeFetch} from './lib/runtime-fetch.js';
 import {translateTranscript} from './lib/transcript.js';
-import {fetchTranscriptPayload, fetchWorkspaceMetadata} from './lib/youtube.js';
+import {fetchTranscriptPayload, fetchWorkspaceData, fetchWorkspaceMetadata} from './lib/youtube.js';
 import {LOGO_ASSET_PATH, LOGO_PNG_BYTES} from './ui/brand.js';
 import {SIMPLIFIED_VERSION_CLIENT_SOURCE} from './ui/simplified-version-client.js';
 import {renderSimplifiedVersionTranscriptPage} from './ui/simplified-version-page.js';
@@ -142,9 +142,14 @@ async function handleGeminiPing(_request, env, fetchFn) {
 }
 
 async function handleWorkspaceRequest(request, fetchFn) {
+  const requestUrl = new URL(request.url);
   const body = await readJsonBody(request);
   if (!body.url) {
     return jsonResponse({error: 'A YouTube URL is required.'}, 400);
+  }
+
+  if (requestUrl.searchParams.get('stream') === '1') {
+    return streamWorkspaceNdjson(body.url, fetchFn);
   }
 
   const workspace = await fetchWorkspaceMetadata(body.url, fetchFn);
@@ -168,8 +173,68 @@ async function handleTranscriptRequest(request, fetchFn) {
 }
 
 /**
- * Streams normalized cues as NDJSON: head line, then one JSON object per ≤100 cues, then done.
- * Smaller per-line JSON.parse on the client than one giant payload.
+ * One YouTube watch fetch, then NDJSON: head line with full workspace JSON, cue chunks, done.
+ */
+function streamWorkspaceNdjson(url, fetchFn) {
+  const encoder = new TextEncoder();
+  const chunkSize = TRANSCRIPT_NDJSON_CHUNK_SIZE;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        const data = await fetchWorkspaceData(url, fetchFn);
+        const entries = normalizeTranscriptEntries(data.transcript.entries || []);
+        const workspacePayload = makeWorkspacePayload({
+          video: data.video,
+          transcript: {
+            language: data.transcript.language || '',
+            source: data.transcript.source || '',
+            entries: [],
+            pending: true,
+          },
+        });
+        workspacePayload.transcript.expectedTotal = entries.length;
+        workspacePayload.transcript.source = data.transcript.source || '';
+        workspacePayload.transcript.language = data.transcript.language || '';
+
+        controller.enqueue(
+          encoder.encode(
+            `${JSON.stringify({
+              type: 'head',
+              workspace: workspacePayload,
+            })}\n`,
+          ),
+        );
+
+        await new Promise(function(resolve) {
+          setTimeout(resolve, 0);
+        });
+
+        for (let i = 0; i < entries.length; i += chunkSize) {
+          const slice = entries.slice(i, i + chunkSize);
+          controller.enqueue(
+            encoder.encode(`${JSON.stringify({type: 'chunk', entries: slice})}\n`),
+          );
+        }
+
+        controller.enqueue(encoder.encode(`${JSON.stringify({type: 'done'})}\n`));
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-cache',
+    },
+  });
+}
+
+/**
+ * Legacy NDJSON for POST /api/transcript?stream=1 — same single watch fetch as workspace stream.
  */
 function streamTranscriptNdjson(url, fetchFn) {
   const encoder = new TextEncoder();
@@ -178,15 +243,15 @@ function streamTranscriptNdjson(url, fetchFn) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const transcript = await fetchTranscriptPayload(url, fetchFn);
-        const entries = normalizeTranscriptEntries(transcript.entries || []);
+        const data = await fetchWorkspaceData(url, fetchFn);
+        const entries = normalizeTranscriptEntries(data.transcript.entries || []);
 
         controller.enqueue(
           encoder.encode(
             `${JSON.stringify({
               type: 'head',
-              language: transcript.language || '',
-              source: transcript.source || '',
+              language: data.transcript.language || '',
+              source: data.transcript.source || '',
               total: entries.length,
             })}\n`,
           ),

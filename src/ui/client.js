@@ -75,8 +75,11 @@ const LOCALE_DATA = {
     statusLoadingGeminiAndMeta: 'Verifying Gemini API and loading video metadata…',
     statusGeminiOkLoadingTranscript: 'Gemini API OK · Loading transcript…',
     statusGeminiCheckFailed: 'Gemini API check failed',
+    statusWorkspaceLoadFailed: 'Workspace load failed',
+    statusApiHtmlCloudflare:
+      'Cloudflare returned HTML instead of JSON — check Workers Logs, confirm /api/* routes to this Worker, then retry',
     statusApiHtmlInsteadOfJson:
-      'Got HTML instead of JSON for /api — stay on the same host/port as this page (Wrangler: npm run dev). Do not open the Python proxy port alone; on Cloudflare, route /api/* to this Worker',
+      'Got HTML instead of JSON — open this app from the URL that serves the Worker (Wrangler: npm run dev). Do not use a static-only host or wrong port; route /api/* to this Worker',
     statusLoadingTranscriptFetch: 'Loading transcript...',
     transcriptStreamingProgress: '{loaded} / {total} cues loaded',
     statusWorkspaceReady: 'Workspace ready. Streaming summary...',
@@ -172,8 +175,11 @@ const LOCALE_DATA = {
     statusLoadingGeminiAndMeta: '正在验证 Gemini API 并加载视频信息…',
     statusGeminiOkLoadingTranscript: 'Gemini API 正常 · 正在加载字幕…',
     statusGeminiCheckFailed: 'Gemini API 检查失败',
+    statusWorkspaceLoadFailed: '工作台加载失败',
+    statusApiHtmlCloudflare:
+      'Cloudflare 返回了网页而非 JSON — 请查看 Workers 日志，确认 /api/* 已路由到本 Worker，然后再试',
     statusApiHtmlInsteadOfJson:
-      '接口返回了网页而非 JSON — 请与本页使用同一主机和端口（Wrangler：npm run dev）。不要单独打开 Python 代理端口；线上请把 /api/* 指到本 Worker',
+      '接口返回了网页而非 JSON — 请从运行 Worker 的地址打开本应用（Wrangler：npm run dev）。不要用纯静态站或错误端口；线上请把 /api/* 指到本 Worker',
     statusLoadingTranscriptFetch: '正在加载字幕...',
     transcriptStreamingProgress: '已加载 {loaded} / {total} 条字幕',
     statusWorkspaceReady: '工作台已加载，正在生成摘要...',
@@ -425,21 +431,13 @@ async function toggleLocale() {
   await loadTabData(state.activeTab);
 }
 
-async function fetchTranscriptNdjsonStream(url, signal) {
+/**
+ * Reads POST /api/workspace?stream=1 NDJSON: head includes full workspace; then cue chunks; done.
+ */
+async function consumeWorkspaceNdjsonStream(response) {
   const streamT0 = typeof performance !== 'undefined' ? performance.now() : 0;
   let firstChunkLogged = false;
-  const response = await fetch('/api/transcript?stream=1', {
-    method: 'POST',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({url: url}),
-    signal: signal,
-  });
-  if (!response.ok) {
-    const errPayload = await parseApiJsonResponse(response).catch(function(e) {
-      return {error: e.message || 'Transcript load failed.'};
-    });
-    throw new Error(errPayload.error || 'Transcript load failed.');
-  }
+  let headLogged = false;
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -447,18 +445,31 @@ async function fetchTranscriptNdjsonStream(url, signal) {
 
   function processLine(line) {
     const msg = JSON.parse(line);
-    if (msg.type === 'head') {
-      state.workspace.transcript = {
-        language: msg.language || '',
-        source: msg.source || '',
-        entries: [],
-        pending: true,
-        expectedTotal: typeof msg.total === 'number' ? msg.total : 0,
+    if (msg.type === 'head' && msg.workspace) {
+      state.workspace = msg.workspace;
+      state.localized = {
+        en: createLocaleCache(),
+        zh: createLocaleCache(),
       };
+      state.selectedPerson = null;
+      state.currentCueId = null;
+      activateTab(TAB_IDS.summary, true);
+      renderWorkspaceMeta();
+      renderDetailPaneNotice();
+      mountPlayer(msg.workspace.video.id);
+      renderTranscriptList();
+      if (
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('workspacePerf') === '1' &&
+        !headLogged
+      ) {
+        headLogged = true;
+        console.info('[workspacePerf] workspace_ndjson_head_ms=' + (performance.now() - streamT0).toFixed(1));
+      }
       scheduleTranscriptStreamRender();
       return;
     }
-    if (msg.type === 'chunk' && Array.isArray(msg.entries)) {
+    if (msg.type === 'chunk' && Array.isArray(msg.entries) && state.workspace && state.workspace.transcript) {
       state.workspace.transcript.entries = state.workspace.transcript.entries.concat(msg.entries);
       if (
         !firstChunkLogged &&
@@ -472,7 +483,7 @@ async function fetchTranscriptNdjsonStream(url, signal) {
       scheduleTranscriptStreamRender();
       return;
     }
-    if (msg.type === 'done') {
+    if (msg.type === 'done' && state.workspace && state.workspace.transcript) {
       state.workspace.transcript.pending = false;
       if (state.workspace.transcript.expectedTotal !== undefined) {
         delete state.workspace.transcript.expectedTotal;
@@ -501,11 +512,11 @@ async function fetchTranscriptNdjsonStream(url, signal) {
     try {
       processLine(tail);
     } catch (err) {
-      throw new Error('Transcript stream ended before completion');
+      throw new Error('Workspace stream ended before completion');
     }
   }
 
-  if (state.workspace.transcript.pending) {
+  if (state.workspace && state.workspace.transcript && state.workspace.transcript.pending) {
     state.workspace.transcript.pending = false;
     if (state.workspace.transcript.expectedTotal !== undefined) {
       delete state.workspace.transcript.expectedTotal;
@@ -514,7 +525,7 @@ async function fetchTranscriptNdjsonStream(url, signal) {
   }
 
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
-    const n = state.workspace.transcript.entries.length;
+    const n = state.workspace && state.workspace.transcript ? state.workspace.transcript.entries.length : 0;
     console.info('[workspacePerf] transcript_stream_total_ms=' + (performance.now() - streamT0).toFixed(1) + ' cue_count=' + n);
   }
 }
@@ -545,13 +556,13 @@ async function loadWorkspace() {
   setStatus(t('statusLoadingGeminiAndMeta'), 'loading');
 
   try {
-    const [pingRes, response] = await Promise.all([
+    const [pingRes, streamRes] = await Promise.all([
       fetch('/api/gemini/ping', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
         signal: controller.signal,
       }),
-      fetch('/api/workspace', {
+      fetch('/api/workspace?stream=1', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
         body: JSON.stringify({url: url}),
@@ -566,35 +577,16 @@ async function loadWorkspace() {
       throw new Error(pingPayload.error || t('statusGeminiCheckFailed'));
     }
 
-    const parseStart = typeof performance !== 'undefined' ? performance.now() : 0;
-    const payload = await parseApiJsonResponse(response);
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
-      console.info('[workspacePerf] workspace_json_parse_ms=' + (performance.now() - parseStart).toFixed(1));
-    }
-    if (!response.ok) {
-      throw new Error(payload.error || 'Workspace load failed.');
+    if (!streamRes.ok) {
+      const errPayload = await parseApiJsonResponse(streamRes).catch(function(e) {
+        return {error: e.message || 'Workspace load failed.'};
+      });
+      throw new Error(errPayload.error || 'Workspace load failed.');
     }
 
-    setStatus(t('statusGeminiOkLoadingTranscript'), 'loading');
-
-    state.workspace = payload;
-    state.localized = {
-      en: createLocaleCache(),
-      zh: createLocaleCache(),
-    };
-    state.selectedPerson = null;
-    state.currentCueId = null;
-    activateTab(TAB_IDS.summary, true);
-    renderWorkspaceMeta();
-    renderDetailPaneNotice();
-    mountPlayer(payload.video.id);
-    renderTranscriptList();
-
-    const transcriptController = new AbortController();
-    state.requests.transcriptData = transcriptController;
     setStatus(t('statusLoadingTranscriptFetch'), 'loading');
 
-    await fetchTranscriptNdjsonStream(url, transcriptController.signal);
+    await consumeWorkspaceNdjsonStream(streamRes);
 
     primeSourceTranscriptCache(state.workspace.transcript);
     renderWorkspaceMeta();
@@ -622,8 +614,8 @@ async function loadWorkspace() {
         refs.playerPlaceholder.hidden = false;
         refs.playerStage.hidden = true;
       }
-      setStatus(error.message || 'Workspace load failed.', 'error');
-      refs.analysisMain.innerHTML = '<div class="error-state">' + escapeHtml(error.message || 'Workspace load failed.') + '</div>';
+      setStatus(t('statusWorkspaceLoadFailed'), 'error');
+      refs.analysisMain.innerHTML = '<div class="error-state">' + escapeHtml(error.message || t('statusWorkspaceLoadFailed')) + '</div>';
     }
   } finally {
     refs.loadButton.disabled = false;
@@ -1666,6 +1658,24 @@ function t(key) {
 }
 
 /**
+ * HTML bodies from /api usually mean wrong origin (SPA), or Cloudflare serving an error page when the Worker fails.
+ * @param {string} text
+ * @returns {string} Localized message for throw
+ */
+function describeHtmlApiBody(text) {
+  const sample = text.slice(0, 20000).toLowerCase();
+  const looksCloudflare =
+    sample.includes('cloudflare') ||
+    sample.includes('cf-ray') ||
+    sample.includes('cdn-cgi/') ||
+    sample.includes('cf-error');
+  if (looksCloudflare) {
+    return t('statusApiHtmlCloudflare');
+  }
+  return t('statusApiHtmlInsteadOfJson');
+}
+
+/**
  * Reads JSON from a fetch Response. If the body is HTML (SPA fallback, wrong host, or gateway HTML error), throws a clear error.
  * Uses Content-Type and leading brace or bracket (ASCII 123 or 91) so valid JSON is never mistaken for HTML (some proxies alter bodies slightly).
  * @param {Response} response
@@ -1700,7 +1710,7 @@ function parseApiJsonResponse(response) {
     }
 
     if (first === 60) {
-      throw new Error(t('statusApiHtmlInsteadOfJson'));
+      throw new Error(describeHtmlApiBody(trimmed));
     }
 
     try {
