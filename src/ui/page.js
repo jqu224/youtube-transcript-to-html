@@ -28,15 +28,8 @@ export function renderAppPage() {
         <div class="hero-topline">
           <div class="hero-brand">
             <div>
-              <h1>
-                Stream a captioned YouTube video
-                <br />
-                into a richer AI analysis workspace.
-              </h1>
-              <p>
-                Paste a video, load the live transcript, and iterate in real time across an editorial AI summary,
-                mindmap, related videos, and people intelligence view.
-              </p>
+              <h1>YouTube Caption → AI workspace.</h1>
+              <p>Paste a URL. Stream a live summary, mindmap, related videos, and people intel.</p>
             </div>
           </div>
         </div>
@@ -270,5 +263,5 @@ export function renderAppPage() {
     <script src="https://www.youtube.com/iframe_api"></script>
     <script type="module" src="/assets/app.js"></script>
   </body>
-</html>`;
+</html>`;   
 }
