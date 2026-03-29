@@ -14,8 +14,9 @@ export function renderAppPage() {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>YouTube Transcript To HTML</title>
+    <title id="app-title">YouTube Transcript To HTML</title>
     <meta
+      id="app-description"
       name="description"
       content="Live YouTube transcript workspace with streamed Chinese AI summary, mindmap, related videos, and people tabs."
     >
@@ -24,19 +25,26 @@ export function renderAppPage() {
   <body data-theme="light">
     <div class="app-shell">
       <section class="hero-card">
-        <div class="hero-wordmark">/ Youtube Transcript To HTML /</div>
-        <div class="hero-topline">
-          <div class="hero-brand">
-            <div>
-              <h1>YouTube Caption → AI workspace.</h1>
-              <p>Paste a URL. Stream a live summary, mindmap, related videos, and people intel.</p>
+        <div class="hero-title-zone">
+          <div class="hero-wordmark">/ Youtube Transcript To HTML /</div>
+          <button class="locale-toggle" type="button" id="locale-toggle" aria-label="Switch language">
+            <span class="locale-toggle-icon" aria-hidden="true">&#127760;</span>
+            <span id="locale-toggle-text">EN / 中文</span>
+          </button>
+          <div class="hero-topline">
+            <div class="hero-brand">
+              <div>
+                <h1 id="hero-title">YouTube Caption → AI workspace.</h1>
+                <p id="hero-description">Paste a URL. Stream a live summary, mindmap, related videos, and people intel.</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="control-grid">
+        <div class="control-section">
+          <div class="control-grid">
           <div class="control-field">
-            <label for="video-url">YouTube URL</label>
+            <label for="video-url" id="label-video-url">YouTube URL</label>
             <input
               id="video-url"
               name="video-url"
@@ -47,7 +55,7 @@ export function renderAppPage() {
           </div>
 
           <div class="control-field">
-            <label for="tone">Tone</label>
+            <label for="tone" id="label-tone">Tone</label>
             <select id="tone">
               <option value="insightful">Insightful</option>
               <option value="analytical">Analytical</option>
@@ -57,7 +65,7 @@ export function renderAppPage() {
           </div>
 
           <div class="control-field">
-            <label for="length">Length</label>
+            <label for="length" id="label-length">Length</label>
             <select id="length">
               <option value="detailed">Detailed</option>
               <option value="balanced">Balanced</option>
@@ -66,7 +74,7 @@ export function renderAppPage() {
           </div>
 
           <div class="control-field">
-            <label for="section-density">Section Density</label>
+            <label for="section-density" id="label-section-density">Section Density</label>
             <select id="section-density">
               <option value="balanced">Balanced</option>
               <option value="dense">Dense</option>
@@ -75,7 +83,7 @@ export function renderAppPage() {
           </div>
 
           <div class="control-field">
-            <label for="related-focus">Related Focus</label>
+            <label for="related-focus" id="label-related-focus">Related Focus</label>
             <select id="related-focus">
               <option value="adjacent">Adjacent topics</option>
               <option value="same-speakers">Same speakers</option>
@@ -87,6 +95,7 @@ export function renderAppPage() {
             <button class="primary-button" type="button" id="load-workspace">Load Workspace</button>
             <button class="secondary-button" type="button" id="regenerate-summary" disabled>Regenerate</button>
           </div>
+          </div>
         </div>
       </section>
 
@@ -96,7 +105,7 @@ export function renderAppPage() {
             <section class="panel">
               <header class="panel-header">
                 <div>
-                  <h2>Live Video</h2>
+                  <h2 id="player-title">Live Video</h2>
                   <div class="panel-subtitle" id="video-subtitle">Load a video to start the workspace.</div>
                 </div>
                 <div class="video-pill-list" id="video-badges"></div>
@@ -106,8 +115,8 @@ export function renderAppPage() {
                 <div class="player-shell">
                   <div class="player-placeholder" id="player-placeholder">
                     <div>
-                      <strong>Paste a captioned YouTube video</strong>
-                      <p>The player, transcript, and AI tabs will populate together.</p>
+                      <strong id="player-placeholder-title">Paste a captioned YouTube video</strong>
+                      <p id="player-placeholder-copy">The player, transcript, and AI tabs will populate together.</p>
                     </div>
                   </div>
                   <div id="youtube-player" hidden></div>
@@ -119,18 +128,18 @@ export function renderAppPage() {
             <section class="panel">
               <header class="panel-header">
                 <div>
-                  <h2>Live Transcript</h2>
+                  <h2 id="transcript-title">Live Transcript</h2>
                   <div class="panel-subtitle" id="transcript-subtitle">Transcript cues will appear here.</div>
                 </div>
                 <div class="mini-controls">
-                  <label>
+                  <label id="label-auto-follow">
                     Auto Follow
                     <select id="auto-follow">
                       <option value="on">On</option>
                       <option value="off">Off</option>
                     </select>
                   </label>
-                  <label>
+                  <label id="label-transcript-window">
                     Transcript Window
                     <select id="transcript-window">
                       <option value="all">All cues</option>
@@ -151,7 +160,7 @@ export function renderAppPage() {
             <section class="panel">
               <header class="panel-header panel-header-tabs">
                 <div class="panel-header-copy">
-                  <h2>AI Workspace</h2>
+                  <h2 id="workspace-title">AI Workspace</h2>
                   <div class="panel-subtitle" id="workspace-subtitle">
                     Summary is the default tab. Mindmap, related videos, and people load on demand.
                   </div>
@@ -172,32 +181,32 @@ export function renderAppPage() {
 
                 <aside class="analysis-sidebar">
                   <section class="sidebar-section">
-                    <div class="section-label">Realtime Style</div>
+                    <div class="section-label" id="style-section-title">Realtime Style</div>
                     <div class="mini-controls">
-                      <label>
+                      <label id="label-theme">
                         Theme
                         <select id="theme-select">
                           <option value="light">Light</option>
                           <option value="dark">Dark</option>
                         </select>
                       </label>
-                      <label>
+                      <label id="label-font-scale">
                         Font Scale
                         <input id="font-scale" type="range" min="0.85" max="1.45" step="0.05" value="1">
                       </label>
-                      <label>
+                      <label id="label-content-width">
                         Content Width
                         <input id="content-width" type="range" min="680" max="1120" step="20" value="880">
                       </label>
-                      <label>
+                      <label id="label-panel-ratio">
                         Panel Ratio
                         <input id="panel-ratio" type="range" min="30" max="55" step="1" value="38">
                       </label>
-                      <label>
+                      <label id="label-paragraph-spacing">
                         Paragraph Space
                         <input id="paragraph-spacing" type="range" min="0.8" max="1.5" step="0.05" value="1">
                       </label>
-                      <label>
+                      <label id="label-emphasis-density">
                         Emphasis
                         <select id="emphasis-density">
                           <option value="balanced">Balanced</option>
@@ -209,9 +218,9 @@ export function renderAppPage() {
                   </section>
 
                   <section class="sidebar-section">
-                    <div class="section-label">Generation Controls</div>
+                    <div class="section-label" id="generation-section-title">Generation Controls</div>
                     <div class="mini-controls">
-                      <label>
+                      <label id="label-title-style">
                         Title Style
                         <select id="title-style">
                           <option value="editorial">Editorial</option>
@@ -219,7 +228,7 @@ export function renderAppPage() {
                           <option value="bold">Bold</option>
                         </select>
                       </label>
-                      <label>
+                      <label id="label-quote-emphasis">
                         Quote Emphasis
                         <select id="quote-emphasis">
                           <option value="high">High</option>
@@ -227,7 +236,7 @@ export function renderAppPage() {
                           <option value="low">Low</option>
                         </select>
                       </label>
-                      <label>
+                      <label id="label-mindmap-depth">
                         Mindmap Depth
                         <select id="mindmap-depth">
                           <option value="balanced">Balanced</option>
@@ -235,7 +244,7 @@ export function renderAppPage() {
                           <option value="overview">Overview</option>
                         </select>
                       </label>
-                      <label>
+                      <label id="label-people-depth">
                         People Depth
                         <select id="people-depth">
                           <option value="balanced">Balanced</option>
@@ -247,7 +256,7 @@ export function renderAppPage() {
                   </section>
 
                   <section class="sidebar-section">
-                    <div class="section-label">Detail Pane</div>
+                    <div class="section-label" id="detail-pane-title">Detail Pane</div>
                     <div class="detail-scroll" id="detail-pane">
                       <div class="notice-card">Click a person in the People tab to load wiki-style details and related videos.</div>
                     </div>

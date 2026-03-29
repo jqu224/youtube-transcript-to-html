@@ -14,6 +14,12 @@ describe('render model helpers', () => {
     expect(options.length).toBe('detailed');
   });
 
+  it('defaults generation language to english and normalizes invalid values', () => {
+    expect(normalizeGenerationOptions({}).language).toBe('en');
+    expect(normalizeGenerationOptions({language: 'zh'}).language).toBe('zh');
+    expect(normalizeGenerationOptions({language: 'fr'}).language).toBe('en');
+  });
+
   it('clamps style values into safe ranges', () => {
     const style = normalizeStyleOptions({
       fontScale: 3,

@@ -41,8 +41,10 @@ export async function buildPersonDetail({
   personName,
   video,
   transcriptEntries,
+  options,
   fetchFn = fetch,
 }) {
+  const language = options?.language === 'zh' ? 'zh' : 'en';
   const [aiDetail, wikiProfile, relatedVideos] = await Promise.all([
     generateGeminiJson({
       apiKey,
@@ -51,6 +53,7 @@ export async function buildPersonDetail({
         personName,
         video,
         transcriptEntries,
+        options,
       }),
       fetchFn,
     }).catch(() => null),
@@ -61,8 +64,16 @@ export async function buildPersonDetail({
   return {
     personName,
     headline: aiDetail?.headline || wikiProfile?.title || personName,
-    summary: aiDetail?.summary || wikiProfile?.extract || `${personName} 的补充资料暂时有限。`,
-    connectionToVideo: aiDetail?.connectionToVideo || '该人物与当前视频主题存在一定关联。',
+    summary: aiDetail?.summary || wikiProfile?.extract || (
+      language === 'zh'
+        ? `${personName} 的补充资料暂时有限。`
+        : `Additional background for ${personName} is limited right now.`
+    ),
+    connectionToVideo: aiDetail?.connectionToVideo || (
+      language === 'zh'
+        ? '该人物与当前视频主题存在一定关联。'
+        : 'This person appears to be meaningfully connected to the current video topic.'
+    ),
     searchKeywords: aiDetail?.searchKeywords || [personName],
     profile: wikiProfile,
     links: {

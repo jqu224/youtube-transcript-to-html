@@ -1,4 +1,5 @@
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const SUPPORTED_OUTPUT_LANGUAGES = new Set(['en', 'zh']);
 
 export const TAB_IDS = {
   SUMMARY: 'summary',
@@ -40,6 +41,7 @@ export const DEFAULT_STYLE_OPTIONS = {
 };
 
 export const DEFAULT_GENERATION_OPTIONS = {
+  language: 'en',
   tone: 'insightful',
   length: 'detailed',
   sectionDensity: 'balanced',
@@ -76,9 +78,13 @@ export const SUMMARY_ALLOWED_TAGS = new Set([
 ]);
 
 export function normalizeGenerationOptions(options = {}) {
-  return {
+  const merged = {
     ...DEFAULT_GENERATION_OPTIONS,
     ...stripUndefined(options),
+  };
+  return {
+    ...merged,
+    language: normalizeOutputLanguage(merged.language),
   };
 }
 
@@ -156,6 +162,10 @@ export function trimToMaxChars(value, maxChars) {
     return value;
   }
   return `${value.slice(0, Math.max(0, maxChars - 48)).trim()}\n...[truncated for prompt budget]`;
+}
+
+export function normalizeOutputLanguage(value) {
+  return SUPPORTED_OUTPUT_LANGUAGES.has(value) ? value : 'en';
 }
 
 function clampNumber(value, min, max) {

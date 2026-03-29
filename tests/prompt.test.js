@@ -5,6 +5,7 @@ import {
   buildPeoplePrompt,
   buildRelatedVideosPrompt,
   buildSummaryPrompt,
+  buildTranscriptTranslationPrompt,
 } from '../src/lib/prompt.js';
 
 const video = {
@@ -30,6 +31,17 @@ describe('prompt builders', () => {
     expect(prompt).toContain('[00:00] First point about AI revenue growth.');
   });
 
+  it('builds summary prompts in english when requested', () => {
+    const prompt = buildSummaryPrompt({
+      video,
+      transcriptEntries,
+      options: {language: 'en'},
+    });
+
+    expect(prompt).toContain('Write in fluent English.');
+    expect(prompt).toContain('Start with one strong <h1> title in English.');
+  });
+
   it('builds structured prompts for tabs', () => {
     expect(buildMindmapPrompt({video, transcriptEntries, options: {}})).toContain('"nodes"');
     expect(buildPeoplePrompt({video, transcriptEntries, options: {}})).toContain('"people"');
@@ -41,5 +53,16 @@ describe('prompt builders', () => {
         searchResults: [{title: 'Related', channelTitle: 'Elsewhere', url: 'https://youtube.com/watch?v=1'}],
       }),
     ).toContain('"recommendations"');
+  });
+
+  it('builds transcript translation prompts with target language instructions', () => {
+    const prompt = buildTranscriptTranslationPrompt({
+      transcriptEntries,
+      targetLanguage: 'zh',
+    });
+
+    expect(prompt).toContain('"entries"');
+    expect(prompt).toContain('Simplified Chinese');
+    expect(prompt).toContain('cue-1');
   });
 });
