@@ -17,6 +17,18 @@ When starting work for a new PR, assign the next ascending PR number `x` by chec
 - Commit subject: use `[PR-5] move reusable commands out of repo`
 - PR title: use `[PR-5] move reusable commands out of repo`
 
+## Creating a new branch (required)
+
+When you **create a new git branch** for work that will become a PR, you must follow this pattern end-to-end—do not use generic names like `feature/foo` or `fix-123` unless they still embed `pr-{x}-` and the summary slug.
+
+1. **Pick the next PR number** `x` (see above): inspect the latest `[PR-y]` in recent commits, merged PR titles, or this repo’s current branch names (`pr-*`).
+2. **Choose the PR title phrase** you will use (short verb + object), e.g. `add Gemini ping on workspace load`.
+3. **Derive the branch name**: `pr-{x}-{slug}` where `slug` is lowercase, hyphen-separated ASCII, no leading/trailing hyphens (same words as the planned PR title after `[PR-x]`).
+4. **Create the branch**: e.g. `git checkout -b pr-7-add-gemini-ping-on-workspace-load`.
+5. **Keep one number per branch**: all commits on that branch use `[PR-x] ...` in the subject until the PR is merged or abandoned.
+
+**Anti-patterns:** `main`, `develop`, `wip`, `test`, or branches without the `pr-{number}-` prefix for repo PR work.
+
 ## Quick Rule
 
 - New PR branch: increment to the next number once

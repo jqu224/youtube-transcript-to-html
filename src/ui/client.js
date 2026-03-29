@@ -75,6 +75,8 @@ const LOCALE_DATA = {
     statusLoadingGeminiAndMeta: 'Verifying Gemini API and loading video metadata…',
     statusGeminiOkLoadingTranscript: 'Gemini API OK · Loading transcript…',
     statusGeminiCheckFailed: 'Gemini API check failed',
+    statusApiHtmlInsteadOfJson:
+      'Got HTML instead of JSON — open this app from your Wrangler dev URL (npm run dev, e.g. http://127.0.0.1:8788). On Cloudflare, route /api/* to this Worker, not static hosting only',
     statusLoadingTranscriptFetch: 'Loading transcript...',
     transcriptStreamingProgress: '{loaded} / {total} cues loaded',
     statusWorkspaceReady: 'Workspace ready. Streaming summary...',
@@ -170,6 +172,8 @@ const LOCALE_DATA = {
     statusLoadingGeminiAndMeta: '正在验证 Gemini API 并加载视频信息…',
     statusGeminiOkLoadingTranscript: 'Gemini API 正常 · 正在加载字幕…',
     statusGeminiCheckFailed: 'Gemini API 检查失败',
+    statusApiHtmlInsteadOfJson:
+      '收到网页而非接口数据 — 请用 Wrangler 本地地址打开（npm run dev，例如 http://127.0.0.1:8788）。部署到 Cloudflare 时请把 /api/* 指到本 Worker，不要只用静态托管',
     statusLoadingTranscriptFetch: '正在加载字幕...',
     transcriptStreamingProgress: '已加载 {loaded} / {total} 条字幕',
     statusWorkspaceReady: '工作台已加载，正在生成摘要...',
@@ -555,15 +559,15 @@ async function loadWorkspace() {
       }),
     ]);
 
-    const pingPayload = await pingRes.json().catch(function() {
-      return {ok: false, error: t('statusGeminiCheckFailed')};
+    const pingPayload = await parseApiJsonResponse(pingRes).catch(function(e) {
+      return {ok: false, error: e.message || t('statusGeminiCheckFailed')};
     });
     if (!pingPayload.ok) {
       throw new Error(pingPayload.error || t('statusGeminiCheckFailed'));
     }
 
     const parseStart = typeof performance !== 'undefined' ? performance.now() : 0;
-    const payload = await response.json();
+    const payload = await parseApiJsonResponse(response);
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
       console.info('[workspacePerf] workspace_json_parse_ms=' + (performance.now() - parseStart).toFixed(1));
     }
@@ -1659,6 +1663,28 @@ function getCopy() {
 
 function t(key) {
   return getCopy()[key];
+}
+
+/**
+ * Reads JSON from a fetch Response. If the body is HTML (SPA fallback or wrong host), throws a clear error.
+ * @param {Response} response
+ * @returns {Promise<object>}
+ */
+function parseApiJsonResponse(response) {
+  return response.text().then(function(text) {
+    const trimmed = text.trim();
+    if (!trimmed.length) {
+      throw new Error('Empty API response');
+    }
+    if (trimmed.charCodeAt(0) === 60) {
+      throw new Error(t('statusApiHtmlInsteadOfJson'));
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch (err) {
+      throw new Error('Invalid JSON: ' + (err.message || String(err)));
+    }
+  });
 }
 
 function getTabLabel(tabId) {
