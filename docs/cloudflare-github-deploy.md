@@ -6,6 +6,13 @@
 
 The repository may include a root [`index.html`](../index.html) only as a **short note for humans** who open the repo in a browser or expect a static file. It is **not** what users hit in production after a Worker deploy.
 
+## Troubleshooting: `Got HTML instead of JSON` when loading a workspace
+
+If `/api/workspace` or `/api/gemini/ping` returns a full HTML document (often starting with `<!DOCTYPE`), the browser is **not** talking to this Worker’s JSON routes. Common cases:
+
+- **Local:** Open the app at the **Wrangler dev** URL printed in the terminal (e.g. `http://127.0.0.1:8788`), not the Python transcript proxy port (`8791`) and not a static file server.
+- **Cloudflare Pages + static assets:** If the site is deployed as **Pages** with SPA fallback, `/api/*` may return `index.html`. Route API traffic to this **Worker** (same zone, correct routes) or use a Worker-only hostname for the app.
+
 ## Where `npm install` runs
 
 Cloudflare Workers **do not** run `npm install` on the edge at request time. Dependencies are installed in **CI or on your laptop** when you run `npm install`, then **Wrangler bundles** `src/worker.js` and its imports into the uploaded script.
