@@ -25,10 +25,52 @@ const CHROME_DEVTOOLS_WELL_KNOWN_PATH = '/.well-known/appspecific/com.chrome.dev
 
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=3600';
 
+/** Query param names whose values must never appear in logs. */
+const REDACT_QUERY_KEYS = new Set([
+  'key',
+  'token',
+  'secret',
+  'password',
+  'access_token',
+  'refresh_token',
+  'authorization',
+  'api_key',
+  'apikey',
+  'client_secret',
+]);
+
+/**
+ * Logs incoming API traffic without secrets (no env vars, headers, or sensitive query values).
+ * @param {Request} request
+ * @param {URL} url
+ */
+function logIncomingApiRequest(request, url) {
+  const search = redactSearchForLog(url.search);
+  console.log('[api]', request.method, url.pathname + search);
+}
+
+function redactSearchForLog(search) {
+  if (!search || search === '?') {
+    return '';
+  }
+  const raw = search.startsWith('?') ? search.slice(1) : search;
+  const params = new URLSearchParams(raw);
+  const out = new URLSearchParams();
+  for (const [key, value] of params.entries()) {
+    const lower = key.toLowerCase();
+    out.set(key, REDACT_QUERY_KEYS.has(lower) ? '[redacted]' : value);
+  }
+  const s = out.toString();
+  return s ? `?${s}` : '';
+}
+
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
+      if (url.pathname.startsWith('/api/')) {
+        logIncomingApiRequest(request, url);
+      }
       const runtimeFetch = createRuntimeFetch({requestUrl: request.url});
 
       if (request.method === 'GET' && url.pathname === CHROME_DEVTOOLS_WELL_KNOWN_PATH) {

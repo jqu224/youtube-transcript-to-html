@@ -302,8 +302,10 @@ export async function fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn) {
     listCaptions(videoId, env, fetchFn),
   ]);
 
+  console.log('[youtube-data-api start] captions.list videoId=' + videoId);
+
   const summary = summarizeCaptionItemsForDebug(items);
-  console.log('[youtube-data-api] captions.list videoId=' + videoId + ' count=' + items.length, summary);
+  console.log('[youtube-data-api end] captions.list videoId=' + videoId + ' count=' + items.length, summary);
 
   const picked = pickCaptionListItem(items);
   if (!picked?.id) {
