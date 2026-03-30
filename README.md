@@ -6,6 +6,7 @@ Current branch scope is intentionally small:
 - Fetch captions with `youtube-transcript`
 - Generate notes with `@google/genai`
 - Render notes in the existing `AI Summary` panel
+- Provide a local `yt-dlp` fallback when YouTube blocks transcript scraping
 
 ## Architecture
 
@@ -66,7 +67,30 @@ curl -X POST http://127.0.0.1:8787/api/summary \
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
+LOCAL_TRANSCRIPT_FALLBACK_URL=http://127.0.0.1:8799
 ```
+
+### Captcha/Rate-Limit Workaround
+
+When YouTube blocks transcript requests with captcha/anti-bot checks:
+
+1. Start local fallback server:
+
+```bash
+npm run dev:fallback
+```
+
+2. Keep `LOCAL_TRANSCRIPT_FALLBACK_URL` in `.dev.vars` (defaults to `http://127.0.0.1:8799`)
+3. Retry in the UI after completing verification on YouTube
+
+The app now shows a guided recovery card with:
+- `Open YouTube Check`
+- `Retry Load Workspace`
+
+### About `YOUTUBE_KEY`
+
+`YOUTUBE_KEY` alone is not enough to fetch public caption bodies from official YouTube Data API caption endpoints.  
+This app therefore uses `youtube-transcript` first, then local `yt-dlp` fallback for blocked cases.
 
 ## Tests
 

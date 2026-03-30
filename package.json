@@ -9,6 +9,7 @@
     "sync-gemini": "node scripts/sync-gemini-local-to-dev-vars.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:worker": "wrangler dev",
+    "dev:fallback": "node scripts/local-transcript-fallback-server.mjs",
     "deploy": "wrangler deploy",
     "test": "vitest run"
   },

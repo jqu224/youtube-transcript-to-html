@@ -34,6 +34,7 @@ export function bootstrapAppClient() {
   var activeWorkspaceTab = 'smartnote';
   var summaryHtml = '';
   var smartnoteHtml = '';
+  var pendingCaptchaOpenUrl = '';
 
   function setStatus(message, kind) {
     if (!statusLine) return;
@@ -119,6 +120,11 @@ export function bootstrapAppClient() {
         var cueCount = Number(transcriptPayload.cueCount || 0);
         setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
       } catch (error) {
+        if (error && error.code === 'youtube_captcha_required') {
+          renderCaptchaRecoveryNotice(url, error);
+          setStatus('YouTube verification required before retry', 'error');
+          return;
+        }
         setStatus(error && error.message ? error.message : 'Failed to load workspace', 'error');
       } finally {
         loadButton.disabled = false;
@@ -176,6 +182,25 @@ export function bootstrapAppClient() {
     });
   }
 
+  if (analysisMain) {
+    analysisMain.addEventListener('click', function (ev) {
+      var trigger = ev.target && ev.target.closest ? ev.target.closest('[data-recovery-action]') : null;
+      if (!trigger) return;
+      var action = String(trigger.getAttribute('data-recovery-action') || '');
+      if (action === 'open-youtube-check') {
+        var openUrl = pendingCaptchaOpenUrl || trigger.getAttribute('data-open-url') || currentVideoUrl || 'https://www.youtube.com';
+        window.open(String(openUrl), '_blank', 'noopener,noreferrer');
+        setStatus('Complete the YouTube check then retry', 'loading');
+        return;
+      }
+      if (action === 'retry-load-workspace') {
+        if (loadButton && !loadButton.disabled) {
+          loadButton.click();
+        }
+      }
+    });
+  }
+
   setStatus('Load a video to begin', 'success');
   renderActiveWorkspaceTab();
 
@@ -191,7 +216,11 @@ export function bootstrapAppClient() {
     });
 
     if (!response.ok) {
-      throw new Error(json.error || 'Request failed');
+      var error = new Error(json.error || 'Request failed');
+      error.status = response.status;
+      if (json && typeof json.code === 'string') error.code = json.code;
+      if (json && json.data && typeof json.data === 'object') error.data = json.data;
+      throw error;
     }
 
     return json;
@@ -205,6 +234,29 @@ export function bootstrapAppClient() {
       button.classList.toggle('is-active', id === activeWorkspaceTab);
     });
     renderActiveWorkspaceTab();
+  }
+
+  function renderCaptchaRecoveryNotice(inputUrl, error) {
+    if (!analysisMain) return;
+    if (analysisEmpty) analysisEmpty.remove();
+    var recovery = error && error.data && error.data.recovery ? error.data.recovery : {};
+    pendingCaptchaOpenUrl = String(recovery.openUrl || currentVideoUrl || inputUrl || 'https://www.youtube.com');
+    var fallback = error && error.data && error.data.fallback ? error.data.fallback : {};
+    var fallbackNote = '';
+    if (fallback && fallback.error) {
+      fallbackNote = '<p>' + escapeHtml('Local fallback status: ' + String(fallback.error)) + '</p>';
+    }
+    analysisMain.innerHTML = ''
+      + '<div class="notice-card">'
+      + '<h3>YouTube verification needed</h3>'
+      + '<p>YouTube asked for a captcha or anti-bot check for this IP.</p>'
+      + '<p>Open YouTube in a new tab, finish verification, then retry.</p>'
+      + fallbackNote
+      + '<div class="action-stack">'
+      + '<button type="button" class="primary-button" data-recovery-action="open-youtube-check" data-open-url="' + escapeHtml(pendingCaptchaOpenUrl) + '">Open YouTube Check</button>'
+      + '<button type="button" class="primary-button" data-recovery-action="retry-load-workspace">Retry Load Workspace</button>'
+      + '</div>'
+      + '</div>';
   }
 
   function renderActiveWorkspaceTab() {

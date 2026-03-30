@@ -43,7 +43,10 @@ export default {
           return jsonResponse({error: 'Could not extract a valid YouTube video ID from url'}, 400);
         }
 
-        const transcriptPayload = await fetchTranscript(videoId);
+        const transcriptPayload = await fetchTranscript(videoId, {
+          env: env || {},
+          videoUrl,
+        });
         return jsonResponse(transcriptPayload);
       }
 
@@ -79,10 +82,34 @@ export default {
 
       return jsonResponse({error: 'Not implemented yet.'}, 501);
     } catch (error) {
-      return jsonResponse({error: error.message || 'Unexpected server error.'}, 500);
+      return jsonResponse(
+        resolveApiErrorPayload(error),
+        resolveHttpStatus(error),
+      );
     }
   },
 };
+
+export function resolveHttpStatus(error) {
+  const status = Number(error && error.status);
+  if (Number.isInteger(status) && status >= 400 && status <= 599) {
+    return status;
+  }
+  return 500;
+}
+
+export function resolveApiErrorPayload(error) {
+  const payload = {
+    error: error && error.message ? error.message : 'Unexpected server error',
+  };
+  if (error && typeof error.code === 'string' && error.code) {
+    payload.code = error.code;
+  }
+  if (error && error.data && typeof error.data === 'object') {
+    payload.data = error.data;
+  }
+  return payload;
+}
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {

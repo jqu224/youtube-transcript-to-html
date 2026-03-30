@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {extractVideoId} from '../src/lib/youtube.js';
+import {extractVideoId, mapTranscriptFetchError} from '../src/lib/youtube.js';
 
 describe('extractVideoId', () => {
   it('extracts from standard watch URL', () => {
@@ -24,5 +24,19 @@ describe('extractVideoId', () => {
 
   it('returns null for invalid input', () => {
     expect(extractVideoId('not-a-url')).toBeNull();
+  });
+});
+
+describe('mapTranscriptFetchError', () => {
+  it('maps captcha/rate-limit failures to 429 with actionable copy', () => {
+    const error = mapTranscriptFetchError(new Error(
+      '[YoutubeTranscript] YouTube is receiving too many requests from this IP and now requires solving a captcha to continue',
+    ));
+
+    expect(error.status).toBe(429);
+    expect(error.code).toBe('youtube_captcha_required');
+    expect(error.data && error.data.recovery && error.data.recovery.openUrl).toBeTypeOf('string');
+    expect(error.message).toMatch(/temporarily blocked transcript requests/i);
+    expect(error.message).toMatch(/switch network/i);
   });
 });
