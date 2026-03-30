@@ -11,6 +11,8 @@ const GEMINI_ENABLED = false;
 const TRANSCRIPT_ROW_EST_PX = 30;
 const TRANSCRIPT_VIRTUAL_OVERSCAN = 14;
 const TRANSCRIPT_VIRTUAL_THRESHOLD = 140;
+/** Merge cues into this many ms per row when Transcript Window = 15 sec blocks */
+const TRANSCRIPT_MERGE_BUCKET_MS = 15000;
 /** How often we sync transcript highlight + auto-follow to the player (ms). Lower = tighter A/V sync; smooth scroll was causing multi-second lag */
 const CUE_POLL_INTERVAL_MS = 100;
 
@@ -36,11 +38,6 @@ const LOCALE_DATA = {
     transcriptSubtitleInitial: 'Transcript cues will appear here',
     autoFollow: 'Auto Follow',
     transcriptWindow: 'Transcript Window',
-    transcriptTimeScopeLabel: 'Time scope',
-    transcriptSliceLengthLabel: 'Window length',
-    transcriptSlicePrev: 'Prev',
-    transcriptSliceNext: 'Next',
-    transcriptSliceSyncPlayhead: 'Match playhead',
     aiWorkspace: 'AI Workspace',
     workspaceSubtitle: 'Summary is the default tab. Mindmap, related videos, and people load on demand',
     generationControls: 'Generation Controls',
@@ -64,15 +61,7 @@ const LOCALE_DATA = {
       sectionDensity: {balanced: 'Balanced', dense: 'Dense', spacious: 'Spacious'},
       relatedFocus: {adjacent: 'Adjacent topics', 'same-speakers': 'Same speakers', 'deeper-dive': 'Deeper dive'},
       autoFollow: {on: 'On', off: 'Off'},
-      transcriptWindow: {all: 'All cues', short: 'Compact'},
-      transcriptTimeScope: {full: 'Full', batch: 'Time window'},
-      transcriptSliceLength: {
-        '60000': '1 min',
-        '120000': '2 min',
-        '300000': '5 min',
-        '600000': '10 min',
-        '900000': '15 min',
-      },
+      transcriptWindow: {all: 'All cues', short: 'Compact', blocks: '15 sec blocks'},
       titleStyle: {editorial: 'Editorial', plain: 'Plain', bold: 'Bold'},
       quoteEmphasis: {high: 'High', balanced: 'Balanced', low: 'Low'},
       mindmapDepth: {balanced: 'Balanced', deep: 'Deep', overview: 'Overview'},
@@ -89,6 +78,8 @@ const LOCALE_DATA = {
     statusGeminiOkLoadingTranscript: 'Gemini API OK · Loading transcript…',
     statusGeminiCheckFailed: 'Gemini API check failed',
     statusWorkspaceLoadFailed: 'Workspace load failed',
+    statusWorkspaceStreamNoHead:
+      'Workspace stream did not include a head line — response may be empty, or HTML/JSON instead of NDJSON. Open this app from the Worker URL (Wrangler: npm run dev). Add ?workspaceDebug=1 for console details',
     statusApiHtmlCloudflare:
       'Cloudflare returned HTML instead of JSON — check Workers Logs, confirm /api/* routes to this Worker, then retry',
     statusApiHtmlInsteadOfJson:
@@ -149,11 +140,6 @@ const LOCALE_DATA = {
     transcriptSubtitleInitial: '字幕内容会显示在这里',
     autoFollow: '自动跟随',
     transcriptWindow: '字幕窗口',
-    transcriptTimeScopeLabel: '时间范围',
-    transcriptSliceLengthLabel: '窗口时长',
-    transcriptSlicePrev: '上一段',
-    transcriptSliceNext: '下一段',
-    transcriptSliceSyncPlayhead: '对齐播放位置',
     aiWorkspace: 'AI 工作区',
     workspaceSubtitle: '默认显示摘要标签页，思维导图、相关视频和人物信息按需加载',
     generationControls: '生成控制',
@@ -177,15 +163,7 @@ const LOCALE_DATA = {
       sectionDensity: {balanced: '平衡', dense: '紧密', spacious: '舒展'},
       relatedFocus: {adjacent: '相近主题', 'same-speakers': '同一讲者', 'deeper-dive': '更深挖'},
       autoFollow: {on: '开启', off: '关闭'},
-      transcriptWindow: {all: '全部字幕', short: '紧凑'},
-      transcriptTimeScope: {full: '全部', batch: '按时间段'},
-      transcriptSliceLength: {
-        '60000': '1 分钟',
-        '120000': '2 分钟',
-        '300000': '5 分钟',
-        '600000': '10 分钟',
-        '900000': '15 分钟',
-      },
+      transcriptWindow: {all: '全部字幕', short: '紧凑', blocks: '15秒一段'},
       titleStyle: {editorial: '编辑感', plain: '朴素', bold: '强烈'},
       quoteEmphasis: {high: '高', balanced: '平衡', low: '低'},
       mindmapDepth: {balanced: '平衡', deep: '深入', overview: '总览'},
@@ -202,6 +180,8 @@ const LOCALE_DATA = {
     statusGeminiOkLoadingTranscript: 'Gemini API 正常 · 正在加载字幕…',
     statusGeminiCheckFailed: 'Gemini API 检查失败',
     statusWorkspaceLoadFailed: '工作台加载失败',
+    statusWorkspaceStreamNoHead:
+      '字幕流未返回 head 行 — 响应可能为空，或返回了网页/JSON 而非 NDJSON。请从 Worker 同源地址打开（Wrangler：npm run dev）。可加 ?workspaceDebug=1 查看控制台',
     statusApiHtmlCloudflare:
       'Cloudflare 返回了网页而非 JSON — 请查看 Workers 日志，确认 /api/* 已路由到本 Worker，然后再试',
     statusApiHtmlInsteadOfJson:
@@ -275,9 +255,6 @@ const state = {
     person: null,
     transcript: null,
   },
-  transcriptTimeSlice: {
-    sliceIndex: 0,
-  },
 };
 
 const refs = {
@@ -321,16 +298,6 @@ const refs = {
   detailPane: document.getElementById('detail-pane'),
   autoFollow: document.getElementById('auto-follow'),
   transcriptWindow: document.getElementById('transcript-window'),
-  transcriptTimeToolbar: document.getElementById('transcript-time-toolbar'),
-  labelTranscriptTimeScope: document.getElementById('label-transcript-time-scope'),
-  transcriptTimeScope: document.getElementById('transcript-time-scope'),
-  transcriptTimeBatch: document.getElementById('transcript-time-batch'),
-  labelTranscriptSliceLength: document.getElementById('label-transcript-slice-length'),
-  transcriptSliceLength: document.getElementById('transcript-slice-length'),
-  transcriptSlicePrev: document.getElementById('transcript-slice-prev'),
-  transcriptSliceNext: document.getElementById('transcript-slice-next'),
-  transcriptSliceSync: document.getElementById('transcript-slice-sync'),
-  transcriptSliceIndicator: document.getElementById('transcript-slice-indicator'),
   tabButtons: Array.from(document.querySelectorAll('[data-tab-button]')),
   tone: document.getElementById('tone'),
   length: document.getElementById('length'),
@@ -383,21 +350,6 @@ function init() {
     });
   });
   refs.transcriptWindow.addEventListener('change', renderTranscriptList);
-  if (refs.transcriptTimeScope) {
-    refs.transcriptTimeScope.addEventListener('change', onTranscriptTimeScopeChange);
-  }
-  if (refs.transcriptSliceLength) {
-    refs.transcriptSliceLength.addEventListener('change', onTranscriptSliceLengthChange);
-  }
-  if (refs.transcriptSlicePrev) {
-    refs.transcriptSlicePrev.addEventListener('click', onTranscriptSlicePrevClick);
-  }
-  if (refs.transcriptSliceNext) {
-    refs.transcriptSliceNext.addEventListener('click', onTranscriptSliceNextClick);
-  }
-  if (refs.transcriptSliceSync) {
-    refs.transcriptSliceSync.addEventListener('click', onTranscriptSliceSyncClick);
-  }
   if (refs.transcriptScroll) {
     refs.transcriptScroll.addEventListener('scroll', onTranscriptPanelScroll, {passive: true});
     refs.transcriptScroll.addEventListener('click', onTranscriptCueClick);
@@ -489,9 +441,13 @@ async function toggleLocale() {
  * Reads POST /api/workspace?stream=1 NDJSON: head includes full workspace; then cue chunks; done.
  */
 async function consumeWorkspaceNdjsonStream(response) {
+  if (!response.body) {
+    throw new Error(t('statusWorkspaceStreamNoHead'));
+  }
   const streamT0 = typeof performance !== 'undefined' ? performance.now() : 0;
   let firstChunkLogged = false;
   let headLogged = false;
+  let headReceived = false;
   const workspaceDebug =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('workspaceDebug') === '1';
@@ -531,6 +487,7 @@ async function consumeWorkspaceNdjsonStream(response) {
         console.log('[workspace] YouTube captions (server debug)', msg.workspaceDebug);
       }
       state.workspace = ws;
+      headReceived = true;
       state.localized = {
         en: createLocaleCache(),
         zh: createLocaleCache(),
@@ -581,7 +538,7 @@ async function consumeWorkspaceNdjsonStream(response) {
     buffer += decoder.decode(next.value || new Uint8Array(0), {stream: !next.done});
     let idx;
     while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim();
+      const line = buffer.slice(0, idx).replace(/^\uFEFF/, '').trim();
       buffer = buffer.slice(idx + 1);
       if (line) {
         processLine(line);
@@ -591,13 +548,21 @@ async function consumeWorkspaceNdjsonStream(response) {
       break;
     }
   }
-  const tail = buffer.trim();
+  const tail = buffer.replace(/^\uFEFF/, '').trim();
   if (tail) {
     try {
       processLine(tail);
     } catch (err) {
       throw new Error('Workspace stream ended before completion');
     }
+  }
+
+  if (!headReceived) {
+    if (workspaceDebug) {
+      const ct = response.headers && response.headers.get ? response.headers.get('content-type') : '';
+      console.error('[workspace-stream] no head line; content-type=', ct);
+    }
+    throw new Error(t('statusWorkspaceStreamNoHead'));
   }
 
   if (state.workspace && state.workspace.transcript && state.workspace.transcript.pending) {
@@ -637,13 +602,6 @@ async function loadWorkspace() {
   state.requests.workspace = controller;
   refs.loadButton.disabled = true;
   refs.regenerateButton.disabled = true;
-  state.transcriptTimeSlice.sliceIndex = 0;
-  if (refs.transcriptTimeScope) {
-    refs.transcriptTimeScope.value = 'full';
-  }
-  if (refs.transcriptTimeBatch) {
-    refs.transcriptTimeBatch.hidden = true;
-  }
   setStatus(t('statusLoadingGeminiAndMeta'), 'loading');
 
   try {
@@ -693,7 +651,7 @@ async function loadWorkspace() {
     await consumeWorkspaceNdjsonStream(streamRes);
 
     if (!state.workspace || !state.workspace.transcript) {
-      throw new Error('Workspace stream did not return a valid head payload');
+      throw new Error(t('statusWorkspaceStreamNoHead'));
     }
 
     primeSourceTranscriptCache(state.workspace.transcript);
@@ -1082,7 +1040,7 @@ function onTranscriptPanelScroll() {
       return;
     }
     const entries = getVisibleTranscriptEntries();
-    if (entries.length < TRANSCRIPT_VIRTUAL_THRESHOLD || refs.transcriptWindow.value !== 'all') {
+    if (entries.length < TRANSCRIPT_VIRTUAL_THRESHOLD || !transcriptViewUsesVirtualList()) {
       return;
     }
     renderTranscriptList();
@@ -1094,8 +1052,16 @@ function onTranscriptCueClick(ev) {
   if (!btn || !state.workspace) {
     return;
   }
+  const cueId = btn.dataset.cueId || '';
+  if (cueId.indexOf('tb-') === 0) {
+    const bi = Number(cueId.slice(3));
+    if (!Number.isNaN(bi)) {
+      seekToTimestamp(bi * TRANSCRIPT_MERGE_BUCKET_MS);
+    }
+    return;
+  }
   const cue = state.workspace.transcript.entries.find(function(entry) {
-    return entry.id === btn.dataset.cueId;
+    return entry.id === cueId;
   });
   if (cue) {
     seekToTimestamp(cue.startMs);
@@ -1103,7 +1069,6 @@ function onTranscriptCueClick(ev) {
 }
 
 function renderTranscriptList() {
-  try {
   if (!state.workspace) {
     refs.transcriptList.innerHTML = '<div class="empty-state">' + escapeHtml(t('transcriptEmptyInitial')) + '</div>';
     return;
@@ -1131,7 +1096,7 @@ function renderTranscriptList() {
 
   const scrollEl = refs.transcriptScroll;
   const useVirtual = Boolean(scrollEl) && entries.length >= TRANSCRIPT_VIRTUAL_THRESHOLD
-    && refs.transcriptWindow.value === 'all';
+    && transcriptViewUsesVirtualList();
 
   /* Slice math is mirrored in src/lib/transcript-virtual-window.js (computeTranscriptVirtualWindow) for tests. */
   if (useVirtual) {
@@ -1177,177 +1142,61 @@ function renderTranscriptList() {
   refs.transcriptList.innerHTML = entries.map(function(entry) {
     return buildTranscriptCueButtonHtml(entry);
   }).join('');
-  } finally {
-    updateTranscriptSliceControls();
-  }
 }
 
-/** @see ../lib/transcript-time-slice.js — keep in sync */
-function computeTranscriptTimeSliceBounds(params) {
-  const dur = Math.max(1, Number(params.sliceDurationMs) || 60000);
-  const len = Math.max(0, Number(params.videoLengthMs) || 0);
-  let sliceCount;
-  let idx = Math.max(0, Number(params.sliceIndex) || 0);
-  if (len <= 0) {
-    sliceCount = 1;
-    idx = 0;
-    return {
-      startMs: 0,
-      endMs: Number.POSITIVE_INFINITY,
-      sliceCount: sliceCount,
-      sliceIndex: idx,
-    };
-  }
-  sliceCount = Math.max(1, Math.ceil(len / dur));
-  idx = Math.min(idx, sliceCount - 1);
-  const startMs = idx * dur;
-  const endMs = Math.min(len, (idx + 1) * dur);
-  return {startMs: startMs, endMs: endMs, sliceCount: sliceCount, sliceIndex: idx};
-}
-
-function filterTranscriptEntriesByTimeSlice(entries, startMs, endMs) {
+/** @see ../lib/transcript-merge-buckets.js — keep in sync */
+function mergeTranscriptEntriesInto15SecBlocks(entries) {
   if (!Array.isArray(entries) || !entries.length) {
     return [];
   }
-  const s = Number(startMs) || 0;
-  const e = Number(endMs);
-  const endIsInf = !Number.isFinite(e) || e === Number.POSITIVE_INFINITY;
-  return entries.filter(function(entry) {
+  const ms = TRANSCRIPT_MERGE_BUCKET_MS;
+  const map = new Map();
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
     const start = Number(entry.startMs) || 0;
-    const dur = Math.max(0, Number(entry.durationMs) || 0);
-    const cueEnd = dur > 0 ? start + dur : start + 1;
-    if (endIsInf) {
-      return start >= s;
+    const bi = Math.floor(start / ms);
+    if (!map.has(bi)) {
+      map.set(bi, {
+        id: 'tb-' + bi,
+        startMs: bi * ms,
+        durationMs: ms,
+        parts: [],
+      });
     }
-    return start < e && cueEnd > s;
-  });
-}
-
-function inferVideoLengthMsFromWorkspace(workspace, entries) {
-  const sec = Number(workspace && workspace.video && workspace.video.lengthSeconds ? workspace.video.lengthSeconds : 0);
-  if (sec > 0) {
-    return sec * 1000;
-  }
-  if (!Array.isArray(entries) || !entries.length) {
-    return 0;
-  }
-  const last = entries[entries.length - 1];
-  const st = Number(last.startMs) || 0;
-  const dur = Math.max(0, Number(last.durationMs) || 0);
-  return st + (dur > 0 ? dur : 2000);
-}
-
-function getWorkspaceVideoLengthMs() {
-  if (!state.workspace) {
-    return 0;
-  }
-  return inferVideoLengthMsFromWorkspace(state.workspace, getCurrentTranscriptEntries());
-}
-
-function transcriptBatchModeActive() {
-  return refs.transcriptTimeScope && refs.transcriptTimeScope.value === 'batch';
-}
-
-function applyTranscriptTimeSliceFilter(entries) {
-  if (!transcriptBatchModeActive()) {
-    return entries;
-  }
-  const lenMs = getWorkspaceVideoLengthMs();
-  const sliceMs = refs.transcriptSliceLength ? Number(refs.transcriptSliceLength.value) || 300000 : 300000;
-  const bounds = computeTranscriptTimeSliceBounds({
-    videoLengthMs: lenMs,
-    sliceDurationMs: sliceMs,
-    sliceIndex: state.transcriptTimeSlice.sliceIndex,
-  });
-  state.transcriptTimeSlice.sliceIndex = bounds.sliceIndex;
-  return filterTranscriptEntriesByTimeSlice(entries, bounds.startMs, bounds.endMs);
-}
-
-function updateTranscriptSliceControls() {
-  if (!refs.transcriptSliceIndicator || !refs.transcriptTimeBatch) {
-    return;
-  }
-  const batchOn = transcriptBatchModeActive();
-  refs.transcriptTimeBatch.hidden = !batchOn;
-  if (!state.workspace) {
-    refs.transcriptSliceIndicator.textContent = '—';
-    if (refs.transcriptSlicePrev) {
-      refs.transcriptSlicePrev.disabled = true;
+    const g = map.get(bi);
+    const t = String(entry.text || '').trim();
+    if (t) {
+      g.parts.push(t);
     }
-    if (refs.transcriptSliceNext) {
-      refs.transcriptSliceNext.disabled = true;
-    }
-    return;
   }
-  if (!batchOn) {
-    return;
-  }
-  const lenMs = getWorkspaceVideoLengthMs();
-  const sliceMs = refs.transcriptSliceLength ? Number(refs.transcriptSliceLength.value) || 300000 : 300000;
-  const bounds = computeTranscriptTimeSliceBounds({
-    videoLengthMs: lenMs,
-    sliceDurationMs: sliceMs,
-    sliceIndex: state.transcriptTimeSlice.sliceIndex,
-  });
-  state.transcriptTimeSlice.sliceIndex = bounds.sliceIndex;
-  refs.transcriptSliceIndicator.textContent = String(bounds.sliceIndex + 1) + ' / ' + String(bounds.sliceCount);
-  if (refs.transcriptSlicePrev) {
-    refs.transcriptSlicePrev.disabled = bounds.sliceIndex <= 0;
-  }
-  if (refs.transcriptSliceNext) {
-    refs.transcriptSliceNext.disabled = bounds.sliceIndex >= bounds.sliceCount - 1;
-  }
+  return Array.from(map.keys())
+    .sort(function(a, b) {
+      return a - b;
+    })
+    .map(function(bi) {
+      const g = map.get(bi);
+      return {
+        id: g.id,
+        startMs: g.startMs,
+        durationMs: g.durationMs,
+        text: g.parts.join(' ').replace(/\s+/g, ' ').trim(),
+      };
+    })
+    .filter(function(row) {
+      return row.text.length > 0;
+    });
 }
 
-function onTranscriptTimeScopeChange() {
-  if (refs.transcriptTimeBatch) {
-    refs.transcriptTimeBatch.hidden = !transcriptBatchModeActive();
-  }
-  if (!transcriptBatchModeActive()) {
-    state.transcriptTimeSlice.sliceIndex = 0;
-  }
-  renderTranscriptList();
-}
-
-function onTranscriptSliceLengthChange() {
-  state.transcriptTimeSlice.sliceIndex = 0;
-  renderTranscriptList();
-}
-
-function onTranscriptSlicePrevClick() {
-  if (state.transcriptTimeSlice.sliceIndex > 0) {
-    state.transcriptTimeSlice.sliceIndex -= 1;
-    renderTranscriptList();
-  }
-}
-
-function onTranscriptSliceNextClick() {
-  state.transcriptTimeSlice.sliceIndex += 1;
-  renderTranscriptList();
-}
-
-function onTranscriptSliceSyncClick() {
-  const lenMs = getWorkspaceVideoLengthMs();
-  const sliceMs = refs.transcriptSliceLength ? Number(refs.transcriptSliceLength.value) || 300000 : 300000;
-  let tMs = 0;
-  if (state.player && typeof state.player.getCurrentTime === 'function') {
-    tMs = Math.floor(state.player.getCurrentTime() * 1000);
-  }
-  if (lenMs <= 0) {
-    state.transcriptTimeSlice.sliceIndex = 0;
-  } else {
-    const sliceCount = Math.max(1, Math.ceil(lenMs / sliceMs));
-    state.transcriptTimeSlice.sliceIndex = Math.min(
-      Math.max(0, Math.floor(tMs / sliceMs)),
-      sliceCount - 1,
-    );
-  }
-  renderTranscriptList();
+function transcriptViewUsesVirtualList() {
+  const v = refs.transcriptWindow.value;
+  return v === 'all' || v === 'blocks';
 }
 
 function getVisibleTranscriptEntries() {
   let entries = getCurrentTranscriptEntries();
-  entries = applyTranscriptTimeSliceFilter(entries);
+  if (refs.transcriptWindow.value === 'blocks') {
+    entries = mergeTranscriptEntriesInto15SecBlocks(entries);
+  }
   if (refs.transcriptWindow.value !== 'short' || !state.currentCueId) {
     return entries;
   }
@@ -1602,7 +1451,14 @@ function startCuePolling() {
         break;
       }
     }
-    const nextCueId = active ? active.id : null;
+    let nextCueId = null;
+    if (active) {
+      if (refs.transcriptWindow.value === 'blocks') {
+        nextCueId = 'tb-' + String(Math.floor(active.startMs / TRANSCRIPT_MERGE_BUCKET_MS));
+      } else {
+        nextCueId = active.id;
+      }
+    }
     if (nextCueId && nextCueId !== state.currentCueId) {
       state.currentCueId = nextCueId;
       if (refs.autoFollow.value === 'on' && refs.transcriptScroll) {
@@ -1612,7 +1468,7 @@ function startCuePolling() {
         });
         if (idx !== -1) {
           const el = refs.transcriptScroll;
-          const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && refs.transcriptWindow.value === 'all';
+          const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && transcriptViewUsesVirtualList();
           if (useVirtual) {
             el.scrollTop = Math.max(0, idx * TRANSCRIPT_ROW_EST_PX - el.clientHeight / 2);
           }
@@ -1621,7 +1477,7 @@ function startCuePolling() {
       renderTranscriptList();
       if (refs.autoFollow.value === 'on') {
         const vis = getVisibleTranscriptEntries();
-        const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && refs.transcriptWindow.value === 'all';
+        const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && transcriptViewUsesVirtualList();
         if (!useVirtual) {
           const target = refs.transcriptList.querySelector('[data-cue-id="' + CSS.escape(nextCueId) + '"]');
           if (target) {
@@ -1684,27 +1540,6 @@ function applyLocale() {
   refs.transcriptTitle.textContent = copy.liveTranscript;
   setLabelText(refs.labelAutoFollow, copy.autoFollow);
   setLabelText(refs.labelTranscriptWindow, copy.transcriptWindow);
-  if (refs.labelTranscriptTimeScope) {
-    setLabelText(refs.labelTranscriptTimeScope, copy.transcriptTimeScopeLabel);
-  }
-  if (refs.labelTranscriptSliceLength) {
-    setLabelText(refs.labelTranscriptSliceLength, copy.transcriptSliceLengthLabel);
-  }
-  if (refs.transcriptTimeScope && copy.selectOptions.transcriptTimeScope) {
-    setSelectOptionLabels(refs.transcriptTimeScope, copy.selectOptions.transcriptTimeScope);
-  }
-  if (refs.transcriptSliceLength && copy.selectOptions.transcriptSliceLength) {
-    setSelectOptionLabels(refs.transcriptSliceLength, copy.selectOptions.transcriptSliceLength);
-  }
-  if (refs.transcriptSlicePrev) {
-    refs.transcriptSlicePrev.textContent = copy.transcriptSlicePrev;
-  }
-  if (refs.transcriptSliceNext) {
-    refs.transcriptSliceNext.textContent = copy.transcriptSliceNext;
-  }
-  if (refs.transcriptSliceSync) {
-    refs.transcriptSliceSync.textContent = copy.transcriptSliceSyncPlayhead;
-  }
   refs.workspaceTitle.textContent = copy.aiWorkspace;
   refs.workspaceSubtitle.textContent = copy.workspaceSubtitle;
   refs.generationSectionTitle.textContent = copy.generationControls;

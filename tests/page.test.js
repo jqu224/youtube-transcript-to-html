@@ -18,7 +18,6 @@ describe('renderAppPage', () => {
     expect(html).toContain('panel--transcript');
     expect(html).toContain('id="transcript-scroll"');
     expect(html).toContain('class="panel-body transcript-scroll"');
-    expect(html).toContain('id="transcript-time-scope"');
-    expect(html).toContain('id="transcript-slice-length"');
+    expect(html).toContain('value="blocks"');
   });
 });
