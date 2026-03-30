@@ -1,483 +1,365 @@
-import {normalizeTranscriptEntries} from './render-model.js';
-import {
-  fetchTranscriptPayloadViaYoutubeApi,
-  fetchWorkspaceDataViaYoutubeApi,
-  fetchWorkspaceMetadataViaYoutubeApi,
-  isYoutubeDataApiConfigured,
-} from './youtube-data-api.js';
+import {fetchTranscript as fetchYouTubeTranscript} from 'youtube-transcript/dist/youtube-transcript.esm.js';
+import {fetchTranscriptViaLocalFallback} from './local-transcript-fallback.js';
 
-const WATCH_BASE_URL = 'https://www.youtube.com/watch?v=';
-const SEARCH_BASE_URL = 'https://www.youtube.com/results?search_query=';
-const WATCH_PAGE_USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
+const TOO_MANY_REQUESTS_PATTERN = /(too many requests|captcha|unusual traffic|bot detected|rate limit)/i;
+
+function makeHttpError(message, status, cause, code, data) {
+  const error = new Error(message);
+  error.status = status;
+  if (code) error.code = code;
+  if (data) error.data = data;
+  if (cause) error.cause = cause;
+  return error;
+}
 
 export function extractVideoId(input) {
-  if (!input) {
-    throw new Error('A YouTube URL or video ID is required.');
-  }
+  const trimmed = String(input || '').trim();
+  if (VIDEO_ID_PATTERN.test(trimmed)) return trimmed;
 
-  const trimmed = String(input).replace(/\\/g, '').trim();
-  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
-    return trimmed;
-  }
-
-  let url;
   try {
-    url = new URL(trimmed);
-  } catch {
-    throw new Error('Enter a valid YouTube URL or video ID.');
-  }
+    const url = new URL(trimmed);
+    const fromSearch = url.searchParams.get('v');
+    if (fromSearch && VIDEO_ID_PATTERN.test(fromSearch)) return fromSearch;
 
-  const host = url.hostname.replace(/^www\./, '');
-  if (host === 'youtu.be') {
-    const value = url.pathname.split('/').filter(Boolean)[0];
-    if (value && /^[a-zA-Z0-9_-]{11}$/.test(value)) {
-      return value;
-    }
-  }
-
-  if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
-    const directId = url.searchParams.get('v');
-    if (directId && /^[a-zA-Z0-9_-]{11}$/.test(directId)) {
-      return directId;
+    if (url.hostname === 'youtu.be') {
+      const fromShort = url.pathname.replace(/^\//, '').split('/')[0];
+      if (VIDEO_ID_PATTERN.test(fromShort)) return fromShort;
     }
 
-    const match = url.pathname.match(/\/(?:embed|shorts|live)\/([a-zA-Z0-9_-]{11})/);
-    if (match) {
-      return match[1];
-    }
-  }
+    const fromPath = url.pathname.match(/\/(?:embed|shorts|live)\/([a-zA-Z0-9_-]{11})/);
+    if (fromPath) return fromPath[1];
+  } catch (_) {}
 
-  throw new Error('Could not find a valid YouTube video ID.');
+  return null;
 }
 
-/**
- * @param {string} videoId
- * @param {string} [pageOrigin] Parent page origin for IFrame API postMessage; omit when unknown (e.g. server metadata)
- */
-export function buildEmbedUrl(videoId, pageOrigin) {
-  let url = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1`;
-  if (pageOrigin && typeof pageOrigin === 'string' && pageOrigin.trim()) {
-    url += `&origin=${encodeURIComponent(pageOrigin.trim())}`;
+export async function fetchTranscript(videoId, options = {}) {
+  const env = options && options.env ? options.env : {};
+  const videoUrl = options && typeof options.videoUrl === 'string' ? options.videoUrl.trim() : '';
+  const oauthAccessToken = options && typeof options.oauthAccessToken === 'string'
+    ? options.oauthAccessToken.trim()
+    : '';
+  if (oauthAccessToken) {
+    try {
+      return await fetchTranscriptViaOAuth(videoId, {oauthAccessToken, env});
+    } catch (_) {}
   }
-  return url;
-}
-
-async function loadWatchPageAndPlayerResponse(videoId, fetchFn) {
-  const videoPage = await fetchYouTubeWatchPage(videoId, fetchFn);
-  const playerResponse = extractJsonAssignment(videoPage, 'var ytInitialPlayerResponse = ')
-    || extractJsonAssignment(videoPage, 'ytInitialPlayerResponse = ');
-
-  if (!playerResponse) {
-    throw new Error('Could not parse the YouTube video metadata.');
+  if (env && env.YOUTUBE_KEY) {
+    try {
+      return await fetchTranscriptViaApiKey(videoId, {env});
+    } catch (_) {}
   }
-
-  const video = extractVideoMetadata(playerResponse, videoId);
-  return { videoPage, playerResponse, video };
-}
-
-/**
- * One watch-page fetch: video metadata + caption language hint only (no timedtext download).
- * Transcript cues load via {@link fetchTranscriptPayload}.
- */
-/**
- * @param {string} input
- * @param {typeof fetch} [fetchFn]
- * @param {Record<string, string | undefined>} [env] Pass Worker env; when `YOUTUBE_KEY` + `YOUTUBE_ACCESS_TOKEN` are set, uses YouTube Data API (no watch-page scrape).
- */
-export async function fetchWorkspaceMetadata(input, fetchFn = fetch, env) {
-  const videoId = extractVideoId(input);
-  if (env && isYoutubeDataApiConfigured(env)) {
-    return fetchWorkspaceMetadataViaYoutubeApi(videoId, env, fetchFn);
-  }
-  const {playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
-  const tracks = extractCaptionTracks(playerResponse);
-  if (!tracks.length) {
-    throw new Error('This video does not expose any captions.');
-  }
-  const selectedTrack = pickCaptionTrack(tracks);
-  return {
-    video,
-    transcript: {
-      language: selectedTrack.languageCode || selectedTrack.name?.simpleText || '',
-      source: '',
-      entries: [],
-      pending: true,
-    },
-  };
-}
-
-/**
- * Fetches caption JSON (and may re-fetch the watch page). Used by POST /api/transcript.
- */
-export async function fetchTranscriptPayload(input, fetchFn = fetch, env) {
-  const videoId = extractVideoId(input);
-  if (env && isYoutubeDataApiConfigured(env)) {
-    return fetchTranscriptPayloadViaYoutubeApi(videoId, env, fetchFn);
-  }
-  const {videoPage, playerResponse} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
-  return fetchTranscriptFromPage({
-    videoId,
-    videoPage,
-    playerResponse,
-    fetchFn,
-  });
-}
-
-/** Single request: metadata + full transcript (one watch-page fetch, or Data API when configured). */
-export async function fetchWorkspaceData(input, fetchFn = fetch, env) {
-  const videoId = extractVideoId(input);
-  if (env && isYoutubeDataApiConfigured(env)) {
-    return fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn);
-  }
-  const {videoPage, playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
-  const transcript = await fetchTranscriptFromPage({
-    videoId,
-    videoPage,
-    playerResponse,
-    fetchFn,
-  });
-  return {
-    video,
-    transcript,
-  };
-}
-
-export async function fetchTranscriptFromPage({videoId, videoPage, playerResponse, fetchFn = fetch}) {
-  const tracks = extractCaptionTracks(playerResponse);
-  if (!tracks.length) {
-    throw new Error('This video does not expose any captions.');
-  }
-
-  const selectedTrack = pickCaptionTrack(tracks);
-  const transcriptUrl = appendJson3Format(selectedTrack.baseUrl);
-  const response = await fetchFn(transcriptUrl, {
-    headers: defaultYoutubeHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch transcript (${response.status}).`);
-  }
-
-  let entries = [];
   try {
-    const data = await response.json();
-    entries = parseJson3Transcript(data);
+    return await fetchTranscriptViaCaptionExtractor(videoId, {env});
+  } catch (_) {}
+  let entries;
+  try {
+    entries = await fetchYouTubeTranscript(videoId);
   } catch (error) {
-    const fallbackTranscript = await fetchTranscriptFromLocalHelper({
-      videoId,
-      languageCode: selectedTrack.languageCode || '',
-      fetchFn,
-    });
-    if (fallbackTranscript) {
-      return fallbackTranscript;
+    const mappedError = mapTranscriptFetchError(error, {videoId});
+    if (mappedError.code === 'youtube_captcha_required') {
+      try {
+        return await fetchTranscriptViaLocalFallback({videoId, videoUrl, env});
+      } catch (fallbackError) {
+        mappedError.data = {
+          ...(mappedError.data || {}),
+          fallback: {
+            available: Boolean(env && env.LOCAL_TRANSCRIPT_FALLBACK_URL),
+            error: String(fallbackError && fallbackError.message ? fallbackError.message : 'Unavailable'),
+          },
+        };
+      }
     }
-    throw error;
+    throw mappedError;
   }
-
-  if (!entries.length) {
-    const fallbackTranscript = await fetchTranscriptFromLocalHelper({
-      videoId,
-      languageCode: selectedTrack.languageCode || '',
-      fetchFn,
-    });
-    if (fallbackTranscript) {
-      return fallbackTranscript;
-    }
-    throw new Error('The transcript was empty after parsing.');
-  }
+  const fullText = entries.map((entry) => entry.text).join(' ').trim();
 
   return {
-    language: selectedTrack.languageCode || selectedTrack.name?.simpleText || '',
-    source: 'youtube-captions',
+    videoId,
     entries,
+    fullText,
+    cueCount: entries.length,
+    source: 'youtube_transcript_library',
   };
 }
 
-async function fetchTranscriptFromLocalHelper({videoId, languageCode, fetchFn}) {
-  const proxyBaseUrl = fetchFn?.localProxyBaseUrl;
-  if (!proxyBaseUrl) {
-    return null;
-  }
+export async function fetchTranscriptViaCaptionExtractor(videoId, options = {}) {
+  const extractCaptionsImpl = options && typeof options.extractCaptionsImpl === 'function'
+    ? options.extractCaptionsImpl
+    : await loadCaptionExtractor();
 
-  const helperUrl = new URL(`${proxyBaseUrl}/youtube-transcript`);
-  helperUrl.searchParams.set('videoId', videoId);
-  if (languageCode) {
-    helperUrl.searchParams.set('language', languageCode);
-  }
+  const language = String(
+    (options && options.env && options.env.YOUTUBE_CAPTION_LANG)
+      ? options.env.YOUTUBE_CAPTION_LANG
+      : 'en',
+  ).trim() || 'en';
 
-  const response = await fetchFn(helperUrl.toString(), {
-    headers: defaultYoutubeHeaders(),
-  }).catch(() => null);
-  if (!response || !response.ok) {
-    return null;
-  }
-
-  const payload = await response.json().catch(() => null);
-  const entries = normalizeTranscriptEntries(payload?.entries || []);
-  if (!entries.length) {
-    return null;
-  }
-
-  return {
-    language: payload.language || languageCode || '',
-    source: payload.source || 'local-transcript-proxy',
-    entries,
-  };
-}
-
-export async function searchYouTubeVideos(query, fetchFn = fetch, limit = 8) {
-  const response = await fetchFn(`${SEARCH_BASE_URL}${encodeURIComponent(query)}`, {
-    headers: defaultYoutubeHeaders(),
+  const rawCaptions = await extractCaptionsImpl({
+    videoId: String(videoId || ''),
+    lang: language,
   });
-  if (!response.ok) {
-    throw new Error(`Failed to search YouTube (${response.status}).`);
+
+  const entries = normalizeCaptionExtractorEntries(rawCaptions);
+  if (!entries.length) {
+    throw makeHttpError(
+      'youtube-caption-extractor returned no transcript entries',
+      404,
+      null,
+      'youtube_caption_extractor_empty',
+    );
   }
 
-  const html = await response.text();
-  const initialData = extractJsonAssignment(html, 'var ytInitialData = ')
-    || extractJsonAssignment(html, 'ytInitialData = ');
-  if (!initialData) {
+  const fullText = entries.map((entry) => entry.text).join(' ').trim();
+  return {
+    videoId,
+    entries,
+    fullText,
+    cueCount: entries.length,
+    source: 'youtube_caption_extractor',
+    language,
+  };
+}
+
+export async function fetchTranscriptViaApiKey(videoId, options = {}) {
+  return fetchTranscriptViaGoogleCaptions(videoId, {
+    env: options && options.env ? options.env : {},
+    fetchImpl: options && typeof options.fetchImpl === 'function' ? options.fetchImpl : fetch,
+    source: 'youtube_data_api_key_timedtext',
+  });
+}
+
+export async function fetchTranscriptViaOAuth(videoId, options = {}) {
+  const oauthAccessToken = String(options && options.oauthAccessToken ? options.oauthAccessToken : '').trim();
+  if (!oauthAccessToken) {
+    throw makeHttpError('YouTube OAuth access token is missing', 400, null, 'youtube_oauth_token_missing');
+  }
+  return fetchTranscriptViaGoogleCaptions(videoId, {
+    env: options && options.env ? options.env : {},
+    fetchImpl: options && typeof options.fetchImpl === 'function' ? options.fetchImpl : fetch,
+    oauthAccessToken,
+    source: 'youtube_oauth_timedtext',
+  });
+}
+
+async function fetchTranscriptViaGoogleCaptions(videoId, options = {}) {
+  const env = options && options.env ? options.env : {};
+  const fetchImpl = options && typeof options.fetchImpl === 'function' ? options.fetchImpl : fetch;
+  const source = String(options && options.source ? options.source : 'youtube_google_api_timedtext');
+  const oauthAccessToken = String(options && options.oauthAccessToken ? options.oauthAccessToken : '').trim();
+  const apiKey = String(env.YOUTUBE_KEY || '').trim();
+  if (!apiKey && !oauthAccessToken) {
+    throw makeHttpError('YOUTUBE_KEY or OAuth access token is required', 400, null, 'youtube_api_auth_missing');
+  }
+
+  const captionsUrl = new URL('https://youtube.googleapis.com/youtube/v3/captions');
+  captionsUrl.searchParams.set('part', 'snippet');
+  captionsUrl.searchParams.set('videoId', String(videoId || ''));
+  if (apiKey) captionsUrl.searchParams.set('key', apiKey);
+
+  const headers = {};
+  if (oauthAccessToken) {
+    headers.Authorization = `Bearer ${oauthAccessToken}`;
+  }
+  const captionsResponse = await fetchImpl(captionsUrl.toString(), {
+    headers,
+  });
+  const captionsPayload = await captionsResponse.json().catch(() => ({}));
+  if (!captionsResponse.ok) {
+    throw makeHttpError(
+      resolveGoogleApiErrorMessage(captionsPayload, 'YouTube captions.list failed'),
+      captionsResponse.status,
+      null,
+      'youtube_api_key_request_failed',
+    );
+  }
+
+  const items = Array.isArray(captionsPayload && captionsPayload.items) ? captionsPayload.items : [];
+  if (!items.length) {
+    throw makeHttpError(
+      'No caption tracks were returned by YouTube Data API for this video',
+      404,
+      null,
+      'youtube_api_key_no_caption_tracks',
+    );
+  }
+
+  const language = String(items[0] && items[0].snippet && items[0].snippet.language ? items[0].snippet.language : '').trim();
+  if (!language) {
+    throw makeHttpError(
+      'YouTube Data API returned caption tracks without language metadata',
+      502,
+      null,
+      'youtube_api_key_missing_language',
+    );
+  }
+
+  const timedtextUrl = new URL('https://www.youtube.com/api/timedtext');
+  timedtextUrl.searchParams.set('v', String(videoId || ''));
+  timedtextUrl.searchParams.set('lang', language);
+  timedtextUrl.searchParams.set('fmt', 'json3');
+
+  const transcriptResponse = await fetchImpl(timedtextUrl.toString());
+  const transcriptText = await transcriptResponse.text();
+  if (!transcriptResponse.ok) {
+    throw makeHttpError(
+      `YouTube timedtext fetch failed (${transcriptResponse.status})`,
+      transcriptResponse.status,
+      null,
+      'youtube_timedtext_fetch_failed',
+    );
+  }
+
+  const entries = parseJson3Entries(transcriptText);
+  if (!entries.length) {
+    throw makeHttpError(
+      'YouTube timedtext returned no entries for selected caption language',
+      404,
+      null,
+      'youtube_timedtext_empty',
+    );
+  }
+
+  const fullText = entries.map((entry) => entry.text).join(' ').trim();
+  return {
+    videoId,
+    entries,
+    fullText,
+    cueCount: entries.length,
+    source,
+    language,
+  };
+}
+
+export function mapTranscriptFetchError(error, _context = {}) {
+  const rawMessage = String(error && error.message ? error.message : '').trim();
+  const openUrl = 'https://www.youtube.com/';
+
+  if (TOO_MANY_REQUESTS_PATTERN.test(rawMessage)) {
+    return makeHttpError(
+      'YouTube temporarily blocked transcript requests from this IP. Wait a bit, open YouTube once in your browser, or switch network and try again',
+      429,
+      error,
+      'youtube_captcha_required',
+      {
+        recovery: {
+          openUrl,
+          retryHint: 'Complete any YouTube verification challenge in browser, then retry',
+        },
+      },
+    );
+  }
+
+  if (/no transcript|transcripts? disabled|subtitles? unavailable/i.test(rawMessage)) {
+    return makeHttpError('No transcript is available for this video', 404, error, 'youtube_transcript_unavailable');
+  }
+
+  if (/video unavailable|private video|not available/i.test(rawMessage)) {
+    return makeHttpError('This video is unavailable or restricted', 404, error, 'youtube_video_unavailable');
+  }
+
+  if (/invalid video id/i.test(rawMessage)) {
+    return makeHttpError('Could not extract a valid YouTube video ID from url', 400, error, 'youtube_invalid_video_id');
+  }
+
+  return makeHttpError(rawMessage || 'Failed to fetch transcript from YouTube', 502, error, 'youtube_transcript_fetch_failed');
+}
+
+function resolveGoogleApiErrorMessage(payload, fallback) {
+  const fallbackMessage = String(fallback || 'Request failed');
+  if (!payload || typeof payload !== 'object') return fallbackMessage;
+  const apiError = payload.error;
+  if (!apiError || typeof apiError !== 'object') return fallbackMessage;
+  if (typeof apiError.message === 'string' && apiError.message.trim()) {
+    return apiError.message.trim();
+  }
+  return fallbackMessage;
+}
+
+function parseJson3Entries(source) {
+  let payload;
+  try {
+    payload = JSON.parse(String(source || ''));
+  } catch (_) {
     return [];
   }
 
-  const results = [];
-  visitObject(initialData, (value) => {
-    const renderer = value?.videoRenderer;
-    if (!renderer) {
-      return;
-    }
-    results.push({
-      videoId: renderer.videoId,
-      title: joinRuns(renderer.title?.runs) || renderer.title?.simpleText || 'Untitled',
-      channelTitle: joinRuns(renderer.ownerText?.runs) || joinRuns(renderer.longBylineText?.runs) || '',
-      duration: renderer.lengthText?.simpleText || '',
-      views: renderer.viewCountText?.simpleText || '',
-      query,
-      url: `${WATCH_BASE_URL}${renderer.videoId}`,
-      thumbnailUrl: renderer.thumbnail?.thumbnails?.slice(-1)?.[0]?.url || '',
+  const events = Array.isArray(payload && payload.events) ? payload.events : [];
+  const entries = [];
+  for (const event of events) {
+    const segs = Array.isArray(event && event.segs) ? event.segs : [];
+    const text = segs
+      .map((segment) => String(segment && segment.utf8 ? segment.utf8 : ''))
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!text) continue;
+    const offset = Number(event && event.tStartMs ? event.tStartMs : 0) / 1000;
+    const duration = Number(event && event.dDurationMs ? event.dDurationMs : 0) / 1000;
+    entries.push({
+      text,
+      offset: Number.isFinite(offset) ? offset : 0,
+      duration: Number.isFinite(duration) ? Math.max(0.1, duration) : 0.1,
     });
-  });
-
-  return dedupeVideoResults(results).slice(0, limit);
-}
-
-export function parseJson3Transcript(data) {
-  const entries = (data?.events || [])
-    .map((event, index) => {
-      const text = (event?.segs || [])
-        .map((segment) => segment?.utf8 || '')
-        .join('')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (!text) {
-        return null;
-      }
-      return {
-        id: `cue-${index + 1}`,
-        startMs: Number(event?.tStartMs || 0),
-        durationMs: Number(event?.dDurationMs || 0),
-        text,
-      };
-    })
-    .filter(Boolean);
-  return normalizeTranscriptEntries(entries);
-}
-
-export function extractCaptionTracks(playerResponse) {
-  return playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-}
-
-export function pickCaptionTrack(tracks = []) {
-  const preference = ['zh-Hans', 'zh-Hant', 'zh-HK', 'zh-TW', 'zh-CN', 'zh', 'en'];
-  for (const code of preference) {
-    const match = tracks.find((track) => track.languageCode === code && track.kind !== 'asr');
-    if (match) {
-      return match;
-    }
   }
-  for (const code of preference) {
-    const match = tracks.find((track) => track.languageCode === code);
-    if (match) {
-      return match;
-    }
+  return entries;
+}
+
+function normalizeCaptionExtractorEntries(rawCaptions) {
+  const list = Array.isArray(rawCaptions) ? rawCaptions : [];
+  const entries = [];
+  for (const item of list) {
+    const text = String(item && item.text ? item.text : '').trim();
+    if (!text) continue;
+
+    const rawOffset = firstFiniteNumber(
+      item && item.offset,
+      item && item.start,
+      item && item.startSeconds,
+      item && item.startSec,
+      item && item.startMs,
+    );
+    const rawDuration = firstFiniteNumber(
+      item && item.duration,
+      item && item.dur,
+      item && item.durationSeconds,
+      item && item.durationSec,
+      item && item.durationMs,
+    );
+
+    const offset = normalizeSeconds(rawOffset);
+    const duration = Math.max(0.1, normalizeSeconds(rawDuration));
+    entries.push({text, offset, duration});
   }
-  return tracks.find((track) => track.kind !== 'asr') || tracks[0];
+  return entries;
 }
 
-export function extractVideoMetadata(playerResponse, videoId) {
-  const details = playerResponse?.videoDetails || {};
-  const micro = playerResponse?.microformat?.playerMicroformatRenderer || {};
-  return {
-    id: videoId,
-    title: details.title || micro.title?.simpleText || 'Untitled video',
-    channelTitle: details.author || micro.ownerChannelName || '',
-    description: micro.description?.simpleText || '',
-    lengthSeconds: Number(details.lengthSeconds || 0),
-    embedUrl: buildEmbedUrl(videoId),
-    watchUrl: `${WATCH_BASE_URL}${videoId}`,
-    thumbnailUrl: details.thumbnail?.thumbnails?.slice(-1)?.[0]?.url || '',
-  };
-}
-
-function appendJson3Format(baseUrl) {
-  const url = new URL(decodeHtmlEntities(baseUrl));
-  url.searchParams.set('fmt', 'json3');
-  return url.toString();
-}
-
-/** YouTube often returns 429 for datacenter / shared egress IPs; retry brief outages. */
-const WATCH_PAGE_RETRYABLE_STATUSES = new Set([429, 503]);
-const WATCH_PAGE_MAX_ATTEMPTS = 4;
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * @param {Response} response
- * @returns {number | null} Milliseconds to wait, capped for Workers CPU bounds
- */
-function parseRetryAfterMs(response) {
-  const raw = response.headers.get('retry-after');
-  if (!raw) {
-    return null;
-  }
-  const seconds = Number(raw);
-  if (!Number.isNaN(seconds) && seconds >= 0) {
-    return Math.min(seconds * 1000, 120_000);
-  }
-  const when = Date.parse(raw);
-  if (!Number.isNaN(when)) {
-    const delta = when - Date.now();
-    return delta > 0 ? Math.min(delta, 120_000) : null;
-  }
-  return null;
-}
-
-function watchPageError(status) {
-  if (status === 429) {
-    return new Error(
-      'YouTube rate-limited this request (429). Wait a minute and try again, or open the video in your browser once',
+async function loadCaptionExtractor() {
+  const module = await import('youtube-caption-extractor');
+  const extractCaptions = module && typeof module.extractCaptions === 'function'
+    ? module.extractCaptions
+    : null;
+  if (!extractCaptions) {
+    throw makeHttpError(
+      'youtube-caption-extractor does not export extractCaptions',
+      500,
+      null,
+      'youtube_caption_extractor_invalid_module',
     );
   }
-  return new Error(`Failed to fetch the YouTube watch page (${status}).`);
+  return extractCaptions;
 }
 
-async function fetchYouTubeWatchPage(videoId, fetchFn) {
-  const watchUrl = `${WATCH_BASE_URL}${videoId}&hl=en&persist_hl=1&has_verified=1&bpctr=9999999999`;
-  let lastStatus = 0;
+function normalizeSeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1000 ? n / 1000 : n;
+}
 
-  for (let attempt = 0; attempt < WATCH_PAGE_MAX_ATTEMPTS; attempt += 1) {
-    const response = await fetchFn(watchUrl, {
-      headers: defaultYoutubeHeaders(),
-    });
-    lastStatus = response.status;
-
-    if (response.ok) {
-      return response.text();
-    }
-
-    const retryable = WATCH_PAGE_RETRYABLE_STATUSES.has(response.status);
-    const attemptsLeft = attempt < WATCH_PAGE_MAX_ATTEMPTS - 1;
-    if (!retryable || !attemptsLeft) {
-      throw watchPageError(response.status);
-    }
-
-    const fromHeader = parseRetryAfterMs(response);
-    const backoffMs =
-      fromHeader ?? Math.min(1000 * 2 ** attempt + Math.floor(Math.random() * 500), 12_000);
-    await sleep(backoffMs);
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
   }
-
-  throw watchPageError(lastStatus);
-}
-
-function defaultYoutubeHeaders() {
-  return {
-    'accept-language': 'en-US,en;q=0.9',
-    'user-agent': WATCH_PAGE_USER_AGENT,
-  };
-}
-
-export function extractJsonAssignment(html, marker) {
-  const startIndex = html.indexOf(marker);
-  if (startIndex === -1) {
-    return null;
-  }
-  const jsonStart = html.indexOf('{', startIndex + marker.length);
-  if (jsonStart === -1) {
-    return null;
-  }
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = jsonStart; index < html.length; index += 1) {
-    const character = html[index];
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === '\\') {
-        escaped = true;
-      } else if (character === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (character === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (character === '{') {
-      depth += 1;
-    } else if (character === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        const raw = html.slice(jsonStart, index + 1);
-        try {
-          return JSON.parse(decodeHtmlEntities(raw));
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function joinRuns(runs = []) {
-  return runs.map((run) => run?.text || '').join('').trim();
-}
-
-function decodeHtmlEntities(value) {
-  return value
-    .replace(/\\u0026/g, '&')
-    .replace(/\\u003d/g, '=')
-    .replace(/\\\//g, '/');
-}
-
-function visitObject(value, callback) {
-  if (!value || typeof value !== 'object') {
-    return;
-  }
-  callback(value);
-  if (Array.isArray(value)) {
-    value.forEach((item) => visitObject(item, callback));
-    return;
-  }
-  Object.values(value).forEach((item) => visitObject(item, callback));
-}
-
-function dedupeVideoResults(results) {
-  const seen = new Set();
-  return results.filter((item) => {
-    if (!item.videoId || seen.has(item.videoId)) {
-      return false;
-    }
-    seen.add(item.videoId);
-    return true;
-  });
+  return 0;
 }

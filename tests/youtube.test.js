@@ -1,152 +1,143 @@
-import {describe, expect, it, vi} from 'vitest';
+import {describe, expect, it} from 'vitest';
 
 import {
-  extractJsonAssignment,
   extractVideoId,
-  fetchTranscriptFromPage,
-  fetchWorkspaceMetadata,
-  parseJson3Transcript,
-  pickCaptionTrack,
+  fetchTranscriptViaApiKey,
+  fetchTranscriptViaCaptionExtractor,
+  fetchTranscriptViaOAuth,
+  mapTranscriptFetchError,
 } from '../src/lib/youtube.js';
 
-function minimalWatchPageHtml(videoId) {
-  const playerResponse = {
-    videoDetails: {
-      title: 'Test',
-      author: 'Ch',
-      lengthSeconds: '60',
-      thumbnail: {thumbnails: [{url: 'https://i.ytimg.com/vi/x/hqdefault.jpg'}]},
-    },
-    microformat: {playerMicroformatRenderer: {}},
-    captions: {
-      playerCaptionsTracklistRenderer: {
-        captionTracks: [
+describe('extractVideoId', () => {
+  it('extracts from standard watch URL', () => {
+    expect(extractVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ'))
+      .toBe('dQw4w9WgXcQ');
+  });
+
+  it('extracts from youtu.be short URL', () => {
+    expect(extractVideoId('https://youtu.be/dQw4w9WgXcQ'))
+      .toBe('dQw4w9WgXcQ');
+  });
+
+  it('extracts from embed URL', () => {
+    expect(extractVideoId('https://www.youtube.com/embed/dQw4w9WgXcQ'))
+      .toBe('dQw4w9WgXcQ');
+  });
+
+  it('extracts bare 11-char ID', () => {
+    expect(extractVideoId('dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+  });
+
+  it('returns null for invalid input', () => {
+    expect(extractVideoId('not-a-url')).toBeNull();
+  });
+});
+
+describe('mapTranscriptFetchError', () => {
+  it('maps captcha/rate-limit failures to 429 with actionable copy', () => {
+    const error = mapTranscriptFetchError(new Error(
+      '[YoutubeTranscript] YouTube is receiving too many requests from this IP and now requires solving a captcha to continue',
+    ));
+
+    expect(error.status).toBe(429);
+    expect(error.code).toBe('youtube_captcha_required');
+    expect(error.data && error.data.recovery && error.data.recovery.openUrl).toBe('https://www.youtube.com/');
+    expect(error.message).toMatch(/temporarily blocked transcript requests/i);
+    expect(error.message).toMatch(/switch network/i);
+  });
+});
+
+describe('fetchTranscriptViaApiKey', () => {
+  it('returns transcript payload from captions.list + timedtext', async () => {
+    const calls = [];
+    const mockFetch = async (url) => {
+      calls.push(String(url));
+      if (String(url).includes('/youtube/v3/captions')) {
+        return new Response(JSON.stringify({
+          items: [
+            {
+              id: 'caption-track-1',
+              snippet: {language: 'en'},
+            },
+          ],
+        }), {
+          status: 200,
+          headers: {'content-type': 'application/json'},
+        });
+      }
+
+      return new Response(JSON.stringify({
+        events: [
           {
-            languageCode: 'en',
-            baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}`,
+            tStartMs: 0,
+            dDurationMs: 1000,
+            segs: [{utf8: 'hello world'}],
           },
         ],
-      },
-    },
-  };
-  return `<!doctype html><script>var ytInitialPlayerResponse = ${JSON.stringify(playerResponse)};</script>`;
-}
+      }), {
+        status: 200,
+        headers: {'content-type': 'application/json'},
+      });
+    };
 
-describe('extractVideoId', () => {
-  it('accepts raw video ids and common url formats', () => {
-    expect(extractVideoId('xRh2sVcNXQ8')).toBe('xRh2sVcNXQ8');
-    expect(extractVideoId('https://www.youtube.com/watch?v=xRh2sVcNXQ8')).toBe('xRh2sVcNXQ8');
-    expect(extractVideoId('https://youtu.be/xRh2sVcNXQ8?t=12')).toBe('xRh2sVcNXQ8');
-    expect(extractVideoId('https://www.youtube.com/shorts/xRh2sVcNXQ8')).toBe('xRh2sVcNXQ8');
-  });
-
-  it('throws for invalid input', () => {
-    expect(() => extractVideoId('https://example.com')).toThrow(/video ID/i);
-  });
-});
-
-describe('parseJson3Transcript', () => {
-  it('parses events into normalized transcript cues', () => {
-    const parsed = parseJson3Transcript({
-      events: [
-        {
-          tStartMs: 0,
-          dDurationMs: 2400,
-          segs: [{utf8: 'Hello '}, {utf8: 'world'}],
-        },
-        {
-          tStartMs: 2500,
-          dDurationMs: 1800,
-          segs: [{utf8: 'Second cue'}],
-        },
-      ],
+    const payload = await fetchTranscriptViaApiKey('dQw4w9WgXcQ', {
+      env: {YOUTUBE_KEY: 'test-key'},
+      fetchImpl: mockFetch,
     });
 
-    expect(parsed).toHaveLength(2);
-    expect(parsed[0]).toMatchObject({
-      id: 'cue-1',
-      startMs: 0,
-      durationMs: 2400,
-      text: 'Hello world',
-    });
+    expect(payload.cueCount).toBe(1);
+    expect(payload.fullText).toBe('hello world');
+    expect(payload.source).toBe('youtube_data_api_key_timedtext');
+    expect(calls.some((entry) => entry.includes('/youtube/v3/captions'))).toBe(true);
   });
 });
 
-describe('pickCaptionTrack', () => {
-  it('prefers Chinese tracks when available', () => {
-    const track = pickCaptionTrack([
-      {languageCode: 'en', baseUrl: 'https://example.com/en'},
-      {languageCode: 'zh-Hans', baseUrl: 'https://example.com/zh'},
-    ]);
-
-    expect(track.languageCode).toBe('zh-Hans');
-  });
-});
-
-describe('fetchTranscriptFromPage', () => {
-  it('falls back to the local transcript helper when timedtext parsing fails', async () => {
-    const fetchFn = vi.fn(async (url) => {
-      if (String(url).startsWith('https://www.youtube.com/api/timedtext')) {
-        return {
-          ok: true,
-          async json() {
-            throw new SyntaxError('Unexpected end of JSON input');
-          },
-        };
+describe('fetchTranscriptViaOAuth', () => {
+  it('sends bearer token to captions.list request', async () => {
+    const authorizationHeaders = [];
+    const mockFetch = async (url, init) => {
+      if (String(url).includes('/youtube/v3/captions')) {
+        authorizationHeaders.push(String(init && init.headers && init.headers.Authorization || ''));
+        return new Response(JSON.stringify({
+          items: [{id: 'caption-track-1', snippet: {language: 'en'}}],
+        }), {
+          status: 200,
+          headers: {'content-type': 'application/json'},
+        });
       }
+      return new Response(JSON.stringify({
+        events: [{tStartMs: 0, dDurationMs: 500, segs: [{utf8: 'oauth flow'}]}],
+      }), {
+        status: 200,
+        headers: {'content-type': 'application/json'},
+      });
+    };
 
-      if (String(url).startsWith('http://127.0.0.1:8791/youtube-transcript')) {
-        return {
-          ok: true,
-          async json() {
-            return {
-              language: 'en',
-              source: 'local-transcript-proxy',
-              entries: [
-                {id: 'cue-1', startMs: 0, durationMs: 1200, text: 'Hello from fallback'},
-              ],
-            };
-          },
-        };
-      }
-
-      throw new Error(`Unexpected fetch url: ${url}`);
-    });
-    fetchFn.localProxyBaseUrl = 'http://127.0.0.1:8791';
-
-    const transcript = await fetchTranscriptFromPage({
-      videoId: 'xRh2sVcNXQ8',
-      videoPage: '',
-      playerResponse: {
-        captions: {
-          playerCaptionsTracklistRenderer: {
-            captionTracks: [
-              {
-                languageCode: 'en',
-                baseUrl: 'https://www.youtube.com/api/timedtext?v=xRh2sVcNXQ8',
-              },
-            ],
-          },
-        },
-      },
-      fetchFn,
+    const payload = await fetchTranscriptViaOAuth('dQw4w9WgXcQ', {
+      oauthAccessToken: 'oauth-token-1',
+      env: {},
+      fetchImpl: mockFetch,
     });
 
-    expect(transcript.source).toBe('local-transcript-proxy');
-    expect(transcript.entries[0]).toMatchObject({
-      id: 'cue-1',
-      text: 'Hello from fallback',
-    });
+    expect(payload.source).toBe('youtube_oauth_timedtext');
+    expect(payload.fullText).toBe('oauth flow');
+    expect(authorizationHeaders[0]).toBe('Bearer oauth-token-1');
   });
 });
 
-describe('extractJsonAssignment', () => {
-  it('parses embedded player response JSON blocks', () => {
-    const payload = extractJsonAssignment(
-      '<script>var ytInitialPlayerResponse = {"videoDetails":{"title":"Demo"}};</script>',
-      'var ytInitialPlayerResponse = ',
-    );
+describe('fetchTranscriptViaCaptionExtractor', () => {
+  it('normalizes extractor entries into transcript payload', async () => {
+    const payload = await fetchTranscriptViaCaptionExtractor('dQw4w9WgXcQ', {
+      env: {YOUTUBE_CAPTION_LANG: 'en'},
+      extractCaptionsImpl: async () => ([
+        {text: 'hello', start: 1.2, dur: 2.4},
+        {text: 'world', startMs: 5000, durationMs: 1500},
+      ]),
+    });
 
-    expect(payload.videoDetails.title).toBe('Demo');
+    expect(payload.source).toBe('youtube_caption_extractor');
+    expect(payload.cueCount).toBe(2);
+    expect(payload.fullText).toBe('hello world');
+    expect(payload.entries[1].offset).toBe(5);
   });
 });

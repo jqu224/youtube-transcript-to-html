@@ -18,6 +18,8 @@ describe('renderAppPage', () => {
     expect(html).toContain('panel--transcript');
     expect(html).toContain('id="transcript-scroll"');
     expect(html).toContain('class="panel-body transcript-scroll"');
-    expect(html).toContain('value="blocks"');
+    expect(html).toContain('value="smart" selected');
+    expect(html).toContain('data-tab-button="smartnote"');
+    expect(html).toContain('Smartnote is the default tab');
   });
 });

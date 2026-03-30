@@ -1,65 +1,26 @@
 import {describe, expect, it} from 'vitest';
 
-import worker from '../src/worker.js';
+import worker, {resolveApiErrorPayload, resolveHttpStatus} from '../src/worker.js';
 
-describe('worker asset routes', () => {
-  it('serves the simplified version transcript page and script', async () => {
-    const page = await worker.fetch(new Request('https://example.com/simplified-version'), {});
-    expect(page.status).toBe(200);
-    const html = await page.text();
-    expect(html).toContain('simplified-version-transcript');
-
-    const script = await worker.fetch(new Request('https://example.com/assets/simplified-version.js'), {});
-    expect(script.status).toBe(200);
-    expect(script.headers.get('content-type')).toContain('javascript');
+describe('worker api routes', () => {
+  it('uses explicit error status when provided', () => {
+    expect(resolveHttpStatus({status: 429})).toBe(429);
+    expect(resolveHttpStatus({status: 400})).toBe(400);
   });
 
-  it('returns ping failure when GEMINI_API_KEY is unset and not using local SiliconFlow', async () => {
-    const response = await worker.fetch(
-      new Request('https://example.com/api/gemini/ping', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-      }),
-      {},
-    );
+  it('exposes structured api error payload details', () => {
+    const payload = resolveApiErrorPayload({
+      message: 'Captcha required',
+      code: 'youtube_captcha_required',
+      data: {recovery: {openUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}},
+    });
 
-    expect(response.status).toBe(200);
-    const payload = await response.json();
-    expect(payload.ok).toBe(false);
-    expect(payload.error).toMatch(/GEMINI_API_KEY/i);
+    expect(payload.error).toBe('Captcha required');
+    expect(payload.code).toBe('youtube_captcha_required');
+    expect(payload.data && payload.data.recovery && payload.data.recovery.openUrl).toContain('youtube.com');
   });
 
-  it('returns ping failure when AI_ENV is local but SILICONFLOW_API_KEY is unset', async () => {
-    const response = await worker.fetch(
-      new Request('https://example.com/api/gemini/ping', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-      }),
-      {AI_ENV: 'local'},
-    );
-
-    expect(response.status).toBe(200);
-    const payload = await response.json();
-    expect(payload.ok).toBe(false);
-    expect(payload.error).toMatch(/SILICONFLOW_API_KEY/i);
-  });
-
-  it('rejects speaker transcript stream without rawMarkdown', async () => {
-    const response = await worker.fetch(
-      new Request('https://example.com/api/speaker-transcript/stream', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({}),
-      }),
-      {},
-    );
-
-    expect(response.status).toBe(400);
-    const payload = await response.json();
-    expect(payload.error).toMatch(/rawMarkdown/i);
-  });
-
-  it('rejects transcript request without url', async () => {
+  it('returns 400 when transcript url is missing', async () => {
     const response = await worker.fetch(
       new Request('https://example.com/api/transcript', {
         method: 'POST',
@@ -74,21 +35,61 @@ describe('worker asset routes', () => {
     expect(payload.error).toMatch(/url/i);
   });
 
-  it('serves the logo asset as png', async () => {
-    const response = await worker.fetch(new Request('https://example.com/assets/logo.png'), {});
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('image/png');
-    expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(0);
-  });
-
-  it('serves Chrome DevTools well-known probe as empty JSON', async () => {
+  it('returns 400 when summary transcript is missing', async () => {
     const response = await worker.fetch(
-      new Request('https://example.com/.well-known/appspecific/com.chrome.devtools.json'),
+      new Request('https://example.com/api/summary', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({}),
+      }),
       {},
     );
+
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload.error).toMatch(/transcript/i);
+  });
+
+  it('returns 400 when smartnote transcript is missing', async () => {
+    const response = await worker.fetch(
+      new Request('https://example.com/api/smartnote', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({}),
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload.error).toMatch(/transcript/i);
+  });
+
+  it('serves the main page and static assets', async () => {
+    const page = await worker.fetch(new Request('https://example.com/'), {});
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-type')).toContain('text/html');
+
+    const app = await worker.fetch(new Request('https://example.com/assets/app.js'), {});
+    expect(app.status).toBe(200);
+    expect(app.headers.get('content-type')).toContain('javascript');
+  });
+
+  it('returns public client config for frontend oauth setup', async () => {
+    const response = await worker.fetch(new Request('https://example.com/api/config'), {
+      YOUTUBE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
+    });
+
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('application/json');
-    expect(await response.text()).toBe('{}');
+    const payload = await response.json();
+    expect(payload.youtubeClientId).toBe('test-client-id.apps.googleusercontent.com');
+  });
+
+  it('serves browser oauth popup page', async () => {
+    const response = await worker.fetch(new Request('https://example.com/popup/youtube-transcript-auth'), {});
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    const html = await response.text();
+    expect(html).toContain('Authorize and Fetch');
   });
 });

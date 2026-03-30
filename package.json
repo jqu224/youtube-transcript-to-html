@@ -3,24 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Cloudflare Worker that turns YouTube transcripts into a live AI analysis workspace.",
+  "description": "Cloudflare Worker — YouTube transcript to AI notes workspace.",
   "scripts": {
-    "predev": "node scripts/sync-gemini-local-to-dev-vars.mjs",
+    "predev": "node scripts/sync-gemini-local-to-dev-vars.mjs && node scripts/sync-ui-html-templates.mjs",
     "sync-gemini": "node scripts/sync-gemini-local-to-dev-vars.mjs",
-    "gemini:ping": "node scripts/gemini-ping.mjs",
+    "sync-ui-html": "node scripts/sync-ui-html-templates.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:worker": "wrangler dev",
+    "dev:fallback": "node scripts/local-transcript-fallback-server.mjs",
     "deploy": "wrangler deploy",
-    "test": "vitest run",
-    "speakers:sync-prompt": "node scripts/sync-speaker-prompt.mjs",
-    "speakers:stream": "node scripts/stream-speaker-transcript.mjs",
-    "speakers:fetch": "bun .cursor/skills/baoyu-youtube-transcript/scripts/main.ts"
-  },
-  "dependencies": {
-    "@google/genai": "^1.47.0"
+    "test": "vitest run"
   },
   "devDependencies": {
     "vitest": "^3.2.4",
     "wrangler": "^4.39.0"
+  },
+  "dependencies": {
+    "@google/genai": "^1.47.0",
+    "youtube-caption-extractor": "^1.9.1",
+    "youtube-transcript": "^1.3.0"
   }
 }

@@ -240,14 +240,53 @@ body[data-theme='dark'] .theme-toggle .theme-toggle-moon {
 
 .control-grid {
   margin-top: 0;
-  display: grid;
-  grid-template-columns: minmax(340px, 1.2fr) repeat(4, minmax(0, 1fr)) auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
   gap: 10px;
+}
+
+.control-section.is-collapsed .control-grid {
+  display: none;
+}
+
+.control-section.is-collapsed {
+  margin-top: 0;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+  min-height: 0;
+  overflow: visible;
+}
+
+.control-collapse-toggle {
+  position: absolute;
+  right: 20px;
+  top: -14px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-bg) 92%, white 8%);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
 }
 
 .control-field {
   display: grid;
   gap: 4px;
+}
+
+.control-field--video-url {
+  flex: 0 1 40%;
+  max-width: 40%;
+  min-width: min(540px, 100%);
 }
 
 .control-field label,
@@ -405,6 +444,8 @@ button:hover {
   grid-template-columns: 1fr;
   align-items: start;
   gap: 14px;
+  border-bottom: 0;
+  padding-bottom: 8px;
 }
 
 .panel-header h2,
@@ -596,7 +637,7 @@ button:hover {
   flex-wrap: nowrap;
   overflow-x: auto;
   align-self: end;
-  padding: 6px 2px 0;
+  padding: 2px 2px 0;
   scrollbar-width: none;
 }
 
@@ -606,41 +647,36 @@ button:hover {
 
 .tab-button {
   position: relative;
-  padding: 12px 18px 11px;
-  border-radius: 16px 16px 0 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-muted) 92%, white 8%), color-mix(in srgb, var(--panel-bg) 88%, var(--panel-muted) 12%));
+  padding: 11px 18px;
+  border-radius: 14px 14px 0 0;
+  background: var(--panel-muted);
   border: 1px solid var(--panel-border);
-  border-bottom-color: transparent;
   color: var(--text-secondary);
   font-weight: 700;
   white-space: nowrap;
   flex: 0 0 auto;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  transform: translateY(1px);
+  box-shadow: none;
+  transform: none;
 }
 
 .tab-button.is-active {
   color: var(--brand);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.9));
-  border-color: rgba(66, 99, 235, 0.22);
-  box-shadow:
-    0 -10px 24px rgba(66, 99, 235, 0.08),
-    inset 0 2px 0 rgba(66, 99, 235, 0.14);
-  transform: translateY(0);
+  background: color-mix(in srgb, var(--panel-bg) 92%, white 8%);
+  border-color: color-mix(in srgb, var(--brand) 24%, var(--panel-border) 76%);
+  box-shadow: none;
+  transform: none;
   z-index: 2;
 }
 
 body[data-theme="dark"] .tab-button {
-  background: linear-gradient(180deg, rgba(19, 31, 52, 0.98), rgba(14, 24, 40, 0.94));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--panel-muted) 85%, #0f172a 15%);
+  box-shadow: none;
 }
 
 body[data-theme="dark"] .tab-button.is-active {
-  background: linear-gradient(180deg, rgba(25, 39, 66, 0.98), rgba(17, 29, 49, 0.98));
-  border-color: rgba(96, 165, 250, 0.34);
-  box-shadow:
-    0 -10px 28px rgba(30, 64, 175, 0.18),
-    inset 0 2px 0 rgba(96, 165, 250, 0.14);
+  background: color-mix(in srgb, var(--panel-bg) 90%, #0f172a 10%);
+  border-color: color-mix(in srgb, #60a5fa 35%, var(--panel-border) 65%);
+  box-shadow: none;
 }
 
 body[data-theme="dark"] .hero-chrome-btn {
@@ -719,11 +755,20 @@ body[data-theme="dark"] .hero-chrome-btn {
 }
 
 .summary-frame {
-  max-width: min(100%, var(--content-width));
+  width: 80%;
+  max-width: min(80%, 1200px);
   margin: 0 auto;
   padding: 28px 28px 80px;
   font-size: calc(18px * var(--font-scale));
   line-height: calc(1.78 * var(--paragraph-spacing));
+}
+
+.smartnote-frame h2 {
+  margin-top: 34px;
+}
+
+.smartnote-frame h3 {
+  color: var(--brand);
 }
 
 .summary-frame article,
@@ -964,7 +1009,7 @@ body[data-emphasis-density="high"] .summary-frame blockquote {
   }
 
   .control-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-wrap: wrap;
   }
 
   .action-stack {
@@ -994,7 +1039,17 @@ body[data-emphasis-density="high"] .summary-frame blockquote {
     border-radius: 24px;
   }
 
-  .control-grid,
+  .control-grid {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .control-field--video-url {
+    flex: 1 1 auto;
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .mini-controls {
     grid-template-columns: 1fr;
   }
@@ -1005,6 +1060,8 @@ body[data-emphasis-density="high"] .summary-frame blockquote {
   }
 
   .summary-frame {
+    width: 100%;
+    max-width: 100%;
     padding: 22px 18px 64px;
   }
 
