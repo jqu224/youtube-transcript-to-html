@@ -425,6 +425,8 @@ button:hover {
   grid-template-columns: 1fr;
   align-items: start;
   gap: 14px;
+  border-bottom: 0;
+  padding-bottom: 8px;
 }
 
 .panel-header h2,
@@ -616,7 +618,7 @@ button:hover {
   flex-wrap: nowrap;
   overflow-x: auto;
   align-self: end;
-  padding: 6px 2px 0;
+  padding: 2px 2px 0;
   scrollbar-width: none;
 }
 
@@ -626,41 +628,36 @@ button:hover {
 
 .tab-button {
   position: relative;
-  padding: 12px 18px 11px;
-  border-radius: 16px 16px 0 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-muted) 92%, white 8%), color-mix(in srgb, var(--panel-bg) 88%, var(--panel-muted) 12%));
+  padding: 11px 18px;
+  border-radius: 14px 14px 0 0;
+  background: var(--panel-muted);
   border: 1px solid var(--panel-border);
-  border-bottom-color: transparent;
   color: var(--text-secondary);
   font-weight: 700;
   white-space: nowrap;
   flex: 0 0 auto;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  transform: translateY(1px);
+  box-shadow: none;
+  transform: none;
 }
 
 .tab-button.is-active {
   color: var(--brand);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.9));
-  border-color: rgba(66, 99, 235, 0.22);
-  box-shadow:
-    0 -10px 24px rgba(66, 99, 235, 0.08),
-    inset 0 2px 0 rgba(66, 99, 235, 0.14);
-  transform: translateY(0);
+  background: color-mix(in srgb, var(--panel-bg) 92%, white 8%);
+  border-color: color-mix(in srgb, var(--brand) 24%, var(--panel-border) 76%);
+  box-shadow: none;
+  transform: none;
   z-index: 2;
 }
 
 body[data-theme="dark"] .tab-button {
-  background: linear-gradient(180deg, rgba(19, 31, 52, 0.98), rgba(14, 24, 40, 0.94));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--panel-muted) 85%, #0f172a 15%);
+  box-shadow: none;
 }
 
 body[data-theme="dark"] .tab-button.is-active {
-  background: linear-gradient(180deg, rgba(25, 39, 66, 0.98), rgba(17, 29, 49, 0.98));
-  border-color: rgba(96, 165, 250, 0.34);
-  box-shadow:
-    0 -10px 28px rgba(30, 64, 175, 0.18),
-    inset 0 2px 0 rgba(96, 165, 250, 0.14);
+  background: color-mix(in srgb, var(--panel-bg) 90%, #0f172a 10%);
+  border-color: color-mix(in srgb, #60a5fa 35%, var(--panel-border) 65%);
+  box-shadow: none;
 }
 
 body[data-theme="dark"] .hero-chrome-btn {

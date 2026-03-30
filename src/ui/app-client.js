@@ -13,7 +13,6 @@ export const CLIENT_APP_SOURCE = String.raw`
   var statusLine = document.getElementById('status-line');
   var analysisMain = document.getElementById('analysis-main');
   var analysisEmpty = document.getElementById('analysis-empty');
-  var regenerateButton = document.getElementById('regenerate-summary');
   var playerPlaceholder = document.getElementById('player-placeholder');
   var youtubePlayer = document.getElementById('youtube-player');
   var playerTitle = document.getElementById('player-title');
@@ -106,7 +105,8 @@ export const CLIENT_APP_SOURCE = String.raw`
 
       try {
         loadButton.disabled = true;
-        if (regenerateButton) regenerateButton.disabled = true;
+        hasLoadedWorkspace = true;
+        setControlSectionCollapsed(true);
         renderLiveVideo(videoId, url);
 
         setStatus('Fetching transcript', 'loading');
@@ -124,8 +124,6 @@ export const CLIENT_APP_SOURCE = String.raw`
         renderActiveWorkspaceTab();
         var cueCount = Number(transcriptPayload.cueCount || 0);
         setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
-        hasLoadedWorkspace = true;
-        setControlSectionCollapsed(true);
       } catch (error) {
         setStatus(error && error.message ? error.message : 'Failed to load workspace', 'error');
       } finally {

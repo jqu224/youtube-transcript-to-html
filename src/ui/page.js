@@ -112,7 +112,6 @@ export function renderAppPage() {
 
           <div class="action-stack">
             <button class="primary-button" type="button" id="load-workspace">Load Workspace</button>
-            <button class="secondary-button" type="button" id="regenerate-summary" disabled>Regenerate</button>
           </div>
           </div>
         </div>
