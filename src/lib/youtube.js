@@ -37,6 +37,11 @@ export function extractVideoId(input) {
 export async function fetchTranscript(videoId, options = {}) {
   const env = options && options.env ? options.env : {};
   const videoUrl = options && typeof options.videoUrl === 'string' ? options.videoUrl.trim() : '';
+  if (env && env.YOUTUBE_KEY) {
+    try {
+      return await fetchTranscriptViaApiKey(videoId, {env});
+    } catch (_) {}
+  }
   let entries;
   try {
     entries = await fetchYouTubeTranscript(videoId);
@@ -64,6 +69,87 @@ export async function fetchTranscript(videoId, options = {}) {
     entries,
     fullText,
     cueCount: entries.length,
+  };
+}
+
+export async function fetchTranscriptViaApiKey(videoId, options = {}) {
+  const env = options && options.env ? options.env : {};
+  const fetchImpl = options && typeof options.fetchImpl === 'function' ? options.fetchImpl : fetch;
+  const apiKey = String(env.YOUTUBE_KEY || '').trim();
+  if (!apiKey) {
+    throw makeHttpError('YOUTUBE_KEY is not configured', 400, null, 'youtube_api_key_missing');
+  }
+
+  const captionsUrl = new URL('https://youtube.googleapis.com/youtube/v3/captions');
+  captionsUrl.searchParams.set('part', 'snippet');
+  captionsUrl.searchParams.set('videoId', String(videoId || ''));
+  captionsUrl.searchParams.set('key', apiKey);
+
+  const captionsResponse = await fetchImpl(captionsUrl.toString());
+  const captionsPayload = await captionsResponse.json().catch(() => ({}));
+  if (!captionsResponse.ok) {
+    throw makeHttpError(
+      resolveGoogleApiErrorMessage(captionsPayload, 'YouTube captions.list failed'),
+      captionsResponse.status,
+      null,
+      'youtube_api_key_request_failed',
+    );
+  }
+
+  const items = Array.isArray(captionsPayload && captionsPayload.items) ? captionsPayload.items : [];
+  if (!items.length) {
+    throw makeHttpError(
+      'No caption tracks were returned by YouTube Data API for this video',
+      404,
+      null,
+      'youtube_api_key_no_caption_tracks',
+    );
+  }
+
+  const language = String(items[0] && items[0].snippet && items[0].snippet.language ? items[0].snippet.language : '').trim();
+  if (!language) {
+    throw makeHttpError(
+      'YouTube Data API returned caption tracks without language metadata',
+      502,
+      null,
+      'youtube_api_key_missing_language',
+    );
+  }
+
+  const timedtextUrl = new URL('https://www.youtube.com/api/timedtext');
+  timedtextUrl.searchParams.set('v', String(videoId || ''));
+  timedtextUrl.searchParams.set('lang', language);
+  timedtextUrl.searchParams.set('fmt', 'json3');
+
+  const transcriptResponse = await fetchImpl(timedtextUrl.toString());
+  const transcriptText = await transcriptResponse.text();
+  if (!transcriptResponse.ok) {
+    throw makeHttpError(
+      `YouTube timedtext fetch failed (${transcriptResponse.status})`,
+      transcriptResponse.status,
+      null,
+      'youtube_timedtext_fetch_failed',
+    );
+  }
+
+  const entries = parseJson3Entries(transcriptText);
+  if (!entries.length) {
+    throw makeHttpError(
+      'YouTube timedtext returned no entries for selected caption language',
+      404,
+      null,
+      'youtube_timedtext_empty',
+    );
+  }
+
+  const fullText = entries.map((entry) => entry.text).join(' ').trim();
+  return {
+    videoId,
+    entries,
+    fullText,
+    cueCount: entries.length,
+    source: 'youtube_data_api_key_timedtext',
+    language,
   };
 }
 
@@ -99,4 +185,44 @@ export function mapTranscriptFetchError(error, _context = {}) {
   }
 
   return makeHttpError(rawMessage || 'Failed to fetch transcript from YouTube', 502, error, 'youtube_transcript_fetch_failed');
+}
+
+function resolveGoogleApiErrorMessage(payload, fallback) {
+  const fallbackMessage = String(fallback || 'Request failed');
+  if (!payload || typeof payload !== 'object') return fallbackMessage;
+  const apiError = payload.error;
+  if (!apiError || typeof apiError !== 'object') return fallbackMessage;
+  if (typeof apiError.message === 'string' && apiError.message.trim()) {
+    return apiError.message.trim();
+  }
+  return fallbackMessage;
+}
+
+function parseJson3Entries(source) {
+  let payload;
+  try {
+    payload = JSON.parse(String(source || ''));
+  } catch (_) {
+    return [];
+  }
+
+  const events = Array.isArray(payload && payload.events) ? payload.events : [];
+  const entries = [];
+  for (const event of events) {
+    const segs = Array.isArray(event && event.segs) ? event.segs : [];
+    const text = segs
+      .map((segment) => String(segment && segment.utf8 ? segment.utf8 : ''))
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!text) continue;
+    const offset = Number(event && event.tStartMs ? event.tStartMs : 0) / 1000;
+    const duration = Number(event && event.dDurationMs ? event.dDurationMs : 0) / 1000;
+    entries.push({
+      text,
+      offset: Number.isFinite(offset) ? offset : 0,
+      duration: Number.isFinite(duration) ? Math.max(0.1, duration) : 0.1,
+    });
+  }
+  return entries;
 }

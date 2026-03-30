@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {extractVideoId, mapTranscriptFetchError} from '../src/lib/youtube.js';
+import {extractVideoId, fetchTranscriptViaApiKey, mapTranscriptFetchError} from '../src/lib/youtube.js';
 
 describe('extractVideoId', () => {
   it('extracts from standard watch URL', () => {
@@ -38,5 +38,50 @@ describe('mapTranscriptFetchError', () => {
     expect(error.data && error.data.recovery && error.data.recovery.openUrl).toBe('https://www.youtube.com/');
     expect(error.message).toMatch(/temporarily blocked transcript requests/i);
     expect(error.message).toMatch(/switch network/i);
+  });
+});
+
+describe('fetchTranscriptViaApiKey', () => {
+  it('returns transcript payload from captions.list + timedtext', async () => {
+    const calls = [];
+    const mockFetch = async (url) => {
+      calls.push(String(url));
+      if (String(url).includes('/youtube/v3/captions')) {
+        return new Response(JSON.stringify({
+          items: [
+            {
+              id: 'caption-track-1',
+              snippet: {language: 'en'},
+            },
+          ],
+        }), {
+          status: 200,
+          headers: {'content-type': 'application/json'},
+        });
+      }
+
+      return new Response(JSON.stringify({
+        events: [
+          {
+            tStartMs: 0,
+            dDurationMs: 1000,
+            segs: [{utf8: 'hello world'}],
+          },
+        ],
+      }), {
+        status: 200,
+        headers: {'content-type': 'application/json'},
+      });
+    };
+
+    const payload = await fetchTranscriptViaApiKey('dQw4w9WgXcQ', {
+      env: {YOUTUBE_KEY: 'test-key'},
+      fetchImpl: mockFetch,
+    });
+
+    expect(payload.cueCount).toBe(1);
+    expect(payload.fullText).toBe('hello world');
+    expect(payload.source).toBe('youtube_data_api_key_timedtext');
+    expect(calls.some((entry) => entry.includes('/youtube/v3/captions'))).toBe(true);
   });
 });

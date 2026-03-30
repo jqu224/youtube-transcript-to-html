@@ -67,6 +67,7 @@ curl -X POST http://127.0.0.1:8787/api/summary \
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
+YOUTUBE_KEY=your_youtube_data_api_key_here
 LOCAL_TRANSCRIPT_FALLBACK_URL=http://127.0.0.1:8799
 ```
 
@@ -89,8 +90,12 @@ The app now shows a guided recovery card with:
 
 ### About `YOUTUBE_KEY`
 
-`YOUTUBE_KEY` alone is not enough to fetch public caption bodies from official YouTube Data API caption endpoints.  
-This app therefore uses `youtube-transcript` first, then local `yt-dlp` fallback for blocked cases.
+When `YOUTUBE_KEY` is set, the app now attempts:
+1. `youtube/v3/captions.list` via API key
+2. public `timedtext` fetch using discovered caption language
+
+If that path fails, it falls back to `youtube-transcript`, then local `yt-dlp` fallback (if configured).  
+`YOUTUBE_KEY` can improve track discovery in some cases but still does not guarantee transcripts for every random video.
 
 ## Tests
 
