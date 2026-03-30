@@ -123,6 +123,10 @@ npm install
 npm run dev
 ```
 
+This starts:
+- The Cloudflare Worker dev server (Wrangler)
+- A local Node helper on `http://127.0.0.1:8791` for `/proxy` and `/youtube-transcript` used by `src/lib/youtube.js`
+
 ### 4. Deploy
 
 ```bash
@@ -152,6 +156,12 @@ The Worker calls `GET https://www.googleapis.com/youtube/v3/captions?part=snippe
 
 If `YOUTUBE_KEY` or `YOUTUBE_ACCESS_TOKEN` is missing, the Worker falls back to the legacy **watch-page + timedtext** path in `youtube.js`.
 
+Optional — enable **AssemblyAI** as a last-resort transcript source in the local helper (used only when YouTube caption paths fail or return no cues):
+
+```bash
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+```
+
 **Debug:** open the app with `?workspaceDebug=1` (e.g. `http://127.0.0.1:8788/?workspaceDebug=1`). The browser console logs each NDJSON stream event; the Worker logs `captions.list` / download steps; the first stream line may include `workspaceDebug` with the caption id list and picked track when using the Data API.
 
 Optional (Worker + `npm run gemini:ping` when using SiliconFlow locally):
@@ -168,6 +178,20 @@ If a key was ever committed to git or shared in chat, **rotate it** in [Google A
 ## Baoyu speaker pipeline (local CLI + optional Worker stream)
 
 For captions via the vendored baoyu skill and **streaming Gemini** speaker labeling, see [docs/baoyu-speaker-pipeline.md](docs/baoyu-speaker-pipeline.md). Quick commands: `npm run speakers:fetch`, `npm run speakers:stream`, `npm run speakers:sync-prompt`.
+
+## CLI summary helper
+
+For a minimal **headless** workflow that uses this Worker as a summarization backend, you can run:
+
+```bash
+npm run summary:cli -- 'https://www.youtube.com/watch?v=VIDEO_ID'
+```
+
+By default this expects the Worker at `http://127.0.0.1:8787` and prints the streamed HTML summary to stdout. You can override the Worker base URL and save to a file:
+
+```bash
+npm run summary:cli -- 'https://www.youtube.com/watch?v=VIDEO_ID' --worker http://127.0.0.1:8787 --out summary.html
+```
 
 ## Scripts
 ```bash
