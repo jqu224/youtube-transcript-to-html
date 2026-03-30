@@ -1,6 +1,6 @@
 /**
  * YouTube Data API v3 — captions.list + captions.download (no youtube.com/watch scrape).
- * Requires env: YOUTUBE_KEY (query `key`) and YOUTUBE_ACCESS_TOKEN (Authorization: Bearer).
+ * Requires env: YOUTUBE_KEY (or YOUTUBE_API_KEY) for query `key`.
  * @see https://developers.google.com/youtube/v3/docs/captions/list
  * @see https://developers.google.com/youtube/v3/docs/captions/download
  */
@@ -21,8 +21,7 @@ export function isYoutubeDataApiConfigured(env) {
     return false;
   }
   const key = String(env.YOUTUBE_KEY ?? env.YOUTUBE_API_KEY ?? '').trim();
-  const token = String(env.YOUTUBE_ACCESS_TOKEN ?? '').trim();
-  return Boolean(key && token);
+  return Boolean(key);
 }
 
 /**
@@ -74,7 +73,6 @@ export function videoFromVideosListItem(item, videoId) {
  */
 export async function fetchVideoItem(videoId, env, fetchFn = fetch) {
   const key = String(env.YOUTUBE_KEY ?? env.YOUTUBE_API_KEY ?? '').trim();
-  const token = String(env.YOUTUBE_ACCESS_TOKEN ?? '').trim();
   const url = new URL(`${API_BASE}/videos`);
   url.searchParams.set('part', 'snippet,contentDetails');
   url.searchParams.set('id', videoId);
@@ -82,7 +80,6 @@ export async function fetchVideoItem(videoId, env, fetchFn = fetch) {
 
   const response = await fetchFn(url.toString(), {
     headers: {
-      Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     },
   });
@@ -108,7 +105,6 @@ export async function fetchVideoItem(videoId, env, fetchFn = fetch) {
  */
 export async function listCaptions(videoId, env, fetchFn = fetch) {
   const key = String(env.YOUTUBE_KEY ?? env.YOUTUBE_API_KEY ?? '').trim();
-  const token = String(env.YOUTUBE_ACCESS_TOKEN ?? '').trim();
   const url = new URL(`${API_BASE}/captions`);
   url.searchParams.set('part', 'snippet');
   url.searchParams.set('videoId', videoId);
@@ -116,7 +112,6 @@ export async function listCaptions(videoId, env, fetchFn = fetch) {
 
   const response = await fetchFn(url.toString(), {
     headers: {
-      Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     },
   });
@@ -204,15 +199,12 @@ export function pickCaptionListItem(items) {
  */
 export async function downloadCaptionVtt(captionId, env, fetchFn = fetch) {
   const key = String(env.YOUTUBE_KEY ?? env.YOUTUBE_API_KEY ?? '').trim();
-  const token = String(env.YOUTUBE_ACCESS_TOKEN ?? '').trim();
   const url = new URL(`${API_BASE}/captions/${encodeURIComponent(captionId)}`);
   url.searchParams.set('key', key);
   url.searchParams.set('tfmt', 'vtt');
 
   const response = await fetchFn(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: {},
   });
 
   if (!response.ok) {

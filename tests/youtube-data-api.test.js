@@ -68,10 +68,10 @@ describe('normalizeCaptionListItems', () => {
 });
 
 describe('isYoutubeDataApiConfigured', () => {
-  it('requires key and token', () => {
+  it('requires at least an API key', () => {
     expect(isYoutubeDataApiConfigured(undefined)).toBe(false);
     expect(isYoutubeDataApiConfigured({})).toBe(false);
-    expect(isYoutubeDataApiConfigured({YOUTUBE_KEY: 'k'})).toBe(false);
-    expect(isYoutubeDataApiConfigured({YOUTUBE_KEY: 'k', YOUTUBE_ACCESS_TOKEN: 't'})).toBe(true);
+    expect(isYoutubeDataApiConfigured({YOUTUBE_KEY: 'k'})).toBe(true);
+    expect(isYoutubeDataApiConfigured({YOUTUBE_API_KEY: 'k2'})).toBe(true);
   });
 });
