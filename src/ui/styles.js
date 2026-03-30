@@ -241,8 +241,28 @@ body[data-theme='dark'] .theme-toggle .theme-toggle-moon {
 .control-grid {
   margin-top: 0;
   display: grid;
-  grid-template-columns: minmax(340px, 1.2fr) repeat(4, minmax(0, 1fr)) auto;
+  grid-template-columns: minmax(340px, 1fr) auto;
   gap: 10px;
+}
+
+.control-section.is-collapsed .control-grid {
+  display: none;
+}
+
+.control-collapse-toggle {
+  margin-left: auto;
+  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-muted);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .control-field {
@@ -719,11 +739,20 @@ body[data-theme="dark"] .hero-chrome-btn {
 }
 
 .summary-frame {
-  max-width: min(100%, var(--content-width));
+  width: 80%;
+  max-width: min(80%, 1200px);
   margin: 0 auto;
   padding: 28px 28px 80px;
   font-size: calc(18px * var(--font-scale));
   line-height: calc(1.78 * var(--paragraph-spacing));
+}
+
+.smartnote-frame h2 {
+  margin-top: 34px;
+}
+
+.smartnote-frame h3 {
+  color: var(--brand);
 }
 
 .summary-frame article,
@@ -1005,6 +1034,8 @@ body[data-emphasis-density="high"] .summary-frame blockquote {
   }
 
   .summary-frame {
+    width: 100%;
+    max-width: 100%;
     padding: 22px 18px 64px;
   }
 

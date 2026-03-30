@@ -4,7 +4,7 @@ import {APP_TITLE, FAVICON_DATA_URI} from './brand.js';
 export function renderAppPage() {
   const tabButtons = TAB_CONFIG.map((tab) => {
     return `
-      <button class="tab-button${tab.id === 'summary' ? ' is-active' : ''}" type="button" data-tab-button="${tab.id}">
+      <button class="tab-button${tab.id === 'smartnote' ? ' is-active' : ''}" type="button" data-tab-button="${tab.id}">
         ${tab.label}
       </button>
     `;
@@ -51,7 +51,15 @@ export function renderAppPage() {
             </div>
         </div>
 
-        <div class="control-section">
+        <div class="control-section" id="control-section">
+          <button
+            class="control-collapse-toggle"
+            id="control-collapse-toggle"
+            type="button"
+            aria-expanded="true"
+            aria-label="Toggle URL controls"
+            hidden
+          >▼</button>
           <div class="control-grid">
           <div class="control-field">
             <label for="video-url" id="label-video-url">YouTube URL</label>
@@ -65,7 +73,7 @@ export function renderAppPage() {
             >
           </div>
 
-          <div class="control-field">
+          <div class="control-field" hidden>
             <label for="tone" id="label-tone">Tone</label>
             <select id="tone">
               <option value="insightful">Insightful</option>
@@ -75,7 +83,7 @@ export function renderAppPage() {
             </select>
           </div>
 
-          <div class="control-field">
+          <div class="control-field" hidden>
             <label for="length" id="label-length">Length</label>
             <select id="length">
               <option value="detailed">Detailed</option>
@@ -84,7 +92,7 @@ export function renderAppPage() {
             </select>
           </div>
 
-          <div class="control-field">
+          <div class="control-field" hidden>
             <label for="section-density" id="label-section-density">Section Density</label>
             <select id="section-density">
               <option value="balanced">Balanced</option>
@@ -93,7 +101,7 @@ export function renderAppPage() {
             </select>
           </div>
 
-          <div class="control-field">
+          <div class="control-field" hidden>
             <label for="related-focus" id="label-related-focus">Related Focus</label>
             <select id="related-focus">
               <option value="adjacent">Adjacent topics</option>
@@ -174,7 +182,7 @@ export function renderAppPage() {
                 <div class="panel-header-copy">
                   <h2 id="workspace-title">AI Workspace</h2>
                   <div class="panel-subtitle" id="workspace-subtitle">
-                    Summary is the default tab. Mindmap, related videos, and people load on demand.
+                    Smartnote is the default tab. AI Summary is also available.
                   </div>
                 </div>
                 <div class="tab-strip" role="tablist" aria-label="Workspace tabs">
@@ -186,7 +194,7 @@ export function renderAppPage() {
                 <div class="analysis-main">
                   <div class="summary-scroll" id="analysis-main">
                     <div class="empty-state" id="analysis-empty">
-                      The summary tab will stream HTML here as soon as you load a workspace.
+                      Smartnote will appear here as soon as you load a workspace.
                     </div>
                   </div>
                 </div>

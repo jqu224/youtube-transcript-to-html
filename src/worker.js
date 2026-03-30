@@ -3,7 +3,7 @@ import {APP_STYLES} from './ui/styles.js';
 import {LOGO_ASSET_PATH, LOGO_PNG_BYTES} from './ui/brand.js';
 import {CLIENT_APP_SOURCE} from './ui/app-client.js';
 import {extractVideoId, fetchTranscript} from './lib/youtube.js';
-import {generateSummary} from './lib/gemini.js';
+import {generateSmartnote, generateSummary} from './lib/gemini.js';
 
 const CHROME_DEVTOOLS_WELL_KNOWN_PATH = '/.well-known/appspecific/com.chrome.devtools.json';
 const STATIC_ASSET_CACHE_CONTROL = 'no-store';
@@ -55,6 +55,17 @@ export default {
         }
 
         const html = await generateSummary(transcriptText, env || {});
+        return jsonResponse({html});
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/smartnote') {
+        const body = await readJsonBody(request);
+        const transcriptText = typeof body.transcript === 'string' ? body.transcript.trim() : '';
+        if (!transcriptText) {
+          return jsonResponse({error: 'Missing required field: transcript'}, 400);
+        }
+
+        const html = await generateSmartnote(transcriptText, env || {});
         return jsonResponse({html});
       }
 

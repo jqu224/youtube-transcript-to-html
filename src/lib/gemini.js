@@ -15,7 +15,34 @@ export function buildSummaryPrompt(transcriptText) {
   ].join('\n');
 }
 
+export function buildSmartnotePrompt(transcriptText) {
+  return [
+    'You are an expert editor creating lightweight smartnotes from a YouTube transcript.',
+    'Return semantic HTML only.',
+    'Structure requirements:',
+    '- Start each major theme with <h2>',
+    '- Add a concise subsection title with <h3>',
+    '- Under each subsection, write short bullet lines as <ul><li>...</li></ul>',
+    '- Include speaker-led lines when possible using format: <strong>Speaker:</strong> sentence',
+    '- Keep each bullet concise and readable (1-2 sentences)',
+    '- Preserve the original language of the transcript',
+    '',
+    'The style should feel like section-by-section smartnotes, not a dense essay.',
+    '',
+    'Transcript:',
+    transcriptText,
+  ].join('\n');
+}
+
 export async function generateSummary(transcriptText, env) {
+  return generateFromPrompt(buildSummaryPrompt(transcriptText), env, 'summary');
+}
+
+export async function generateSmartnote(transcriptText, env) {
+  return generateFromPrompt(buildSmartnotePrompt(transcriptText), env, 'smartnote');
+}
+
+async function generateFromPrompt(prompt, env, label) {
   const apiKey = env?.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured');
@@ -25,11 +52,11 @@ export async function generateSummary(transcriptText, env) {
   const ai = new GoogleGenAI({apiKey});
   const response = await ai.models.generateContent({
     model,
-    contents: buildSummaryPrompt(transcriptText),
+    contents: prompt,
   });
 
   if (!response.text) {
-    throw new Error('Gemini returned an empty summary');
+    throw new Error(`Gemini returned an empty ${label}`);
   }
 
   return response.text;

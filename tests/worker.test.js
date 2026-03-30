@@ -33,6 +33,21 @@ describe('worker api routes', () => {
     expect(payload.error).toMatch(/transcript/i);
   });
 
+  it('returns 400 when smartnote transcript is missing', async () => {
+    const response = await worker.fetch(
+      new Request('https://example.com/api/smartnote', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({}),
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload.error).toMatch(/transcript/i);
+  });
+
   it('serves the main page and static assets', async () => {
     const page = await worker.fetch(new Request('https://example.com/'), {});
     expect(page.status).toBe(200);

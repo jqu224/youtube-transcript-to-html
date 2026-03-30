@@ -19,10 +19,13 @@ export const CLIENT_APP_SOURCE = String.raw`
   var playerTitle = document.getElementById('player-title');
   var videoSubtitle = document.getElementById('video-subtitle');
   var videoMeta = document.getElementById('video-meta');
+  var controlSection = document.getElementById('control-section');
+  var controlCollapseToggle = document.getElementById('control-collapse-toggle');
   var transcriptList = document.getElementById('transcript-list');
   var transcriptSubtitle = document.getElementById('transcript-subtitle');
   var transcriptWindow = document.getElementById('transcript-window');
   var autoFollow = document.getElementById('auto-follow');
+  var tabButtons = Array.prototype.slice.call(document.querySelectorAll('[data-tab-button]'));
 
   var theme = 'light';
   var locale = 'en';
@@ -31,6 +34,13 @@ export const CLIENT_APP_SOURCE = String.raw`
   var transcriptEntries = [];
   var transcriptRows = [];
   var activeRowId = '';
+  var hasLoadedWorkspace = false;
+  var ytPlayer = null;
+  var ytApiReadyPromise = null;
+  var autoFollowTimerId = 0;
+  var activeWorkspaceTab = 'smartnote';
+  var summaryHtml = '';
+  var smartnoteHtml = '';
 
   function setStatus(message, kind) {
     if (!statusLine) return;
@@ -103,15 +113,19 @@ export const CLIENT_APP_SOURCE = String.raw`
         var transcriptPayload = await postJson('/api/transcript', {url: url});
         transcriptEntries = normalizeTranscriptEntries(transcriptPayload.entries || []);
         renderTranscriptRows();
-        setStatus('Generating AI summary', 'loading');
-
-        var summaryPayload = await postJson('/api/summary', {
-          transcript: transcriptPayload.fullText,
-        });
-
-        renderSummary(summaryPayload.html);
+        startAutoFollowLoop();
+        setStatus('Generating Smartnote and AI Summary', 'loading');
+        var generated = await Promise.all([
+          postJson('/api/smartnote', {transcript: transcriptPayload.fullText}),
+          postJson('/api/summary', {transcript: transcriptPayload.fullText}),
+        ]);
+        smartnoteHtml = generated[0] && generated[0].html ? generated[0].html : '';
+        summaryHtml = generated[1] && generated[1].html ? generated[1].html : '';
+        renderActiveWorkspaceTab();
         var cueCount = Number(transcriptPayload.cueCount || 0);
-        setStatus('Loaded ' + cueCount + ' cues and generated summary', 'success');
+        setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
+        hasLoadedWorkspace = true;
+        setControlSectionCollapsed(true);
       } catch (error) {
         setStatus(error && error.message ? error.message : 'Failed to load workspace', 'error');
       } finally {
@@ -129,6 +143,13 @@ export const CLIENT_APP_SOURCE = String.raw`
   if (transcriptWindow) {
     transcriptWindow.addEventListener('change', function () {
       renderTranscriptRows();
+      syncTranscriptToPlayback();
+    });
+  }
+
+  if (autoFollow) {
+    autoFollow.addEventListener('change', function () {
+      syncTranscriptToPlayback();
     });
   }
 
@@ -147,7 +168,24 @@ export const CLIENT_APP_SOURCE = String.raw`
     });
   }
 
+  if (controlCollapseToggle) {
+    controlCollapseToggle.addEventListener('click', function () {
+      var isCollapsed = controlSection && controlSection.classList.contains('is-collapsed');
+      setControlSectionCollapsed(!isCollapsed);
+    });
+  }
+
+  if (tabButtons.length) {
+    tabButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        var tabId = String(button.getAttribute('data-tab-button') || '');
+        setActiveWorkspaceTab(tabId);
+      });
+    });
+  }
+
   setStatus('Load a video to begin', 'success');
+  renderActiveWorkspaceTab();
 
   async function postJson(path, payload) {
     var response = await fetch(path, {
@@ -167,26 +205,43 @@ export const CLIENT_APP_SOURCE = String.raw`
     return json;
   }
 
-  function renderSummary(html) {
+  function setActiveWorkspaceTab(tabId) {
+    if (!tabId) return;
+    activeWorkspaceTab = tabId;
+    tabButtons.forEach(function (button) {
+      var id = String(button.getAttribute('data-tab-button') || '');
+      button.classList.toggle('is-active', id === activeWorkspaceTab);
+    });
+    renderActiveWorkspaceTab();
+  }
+
+  function renderActiveWorkspaceTab() {
     if (!analysisMain) return;
     if (analysisEmpty) analysisEmpty.remove();
-    analysisMain.innerHTML = String(html || '');
+    if (activeWorkspaceTab === 'smartnote') {
+      if (!smartnoteHtml) {
+        analysisMain.innerHTML = '<div class="notice-card">Smartnote will appear after the workspace loads.</div>';
+        return;
+      }
+      analysisMain.innerHTML = '<div class="summary-frame smartnote-frame">' + String(smartnoteHtml) + '</div>';
+      return;
+    }
+    if (activeWorkspaceTab === 'summary') {
+      if (!summaryHtml) {
+        analysisMain.innerHTML = '<div class="notice-card">AI Summary will appear after the workspace loads.</div>';
+        return;
+      }
+      analysisMain.innerHTML = '<div class="summary-frame">' + String(summaryHtml) + '</div>';
+      return;
+    }
+    analysisMain.innerHTML = '<div class="notice-card">This tab is not part of the current minimal refactor yet.</div>';
   }
 
   function renderLiveVideo(videoId, videoUrl) {
     if (!youtubePlayer) return;
     currentVideoId = String(videoId || '');
     currentVideoUrl = String(videoUrl || ('https://www.youtube.com/watch?v=' + videoId));
-    var safeVideoId = encodeURIComponent(String(videoId || ''));
-    var embedUrl = 'https://www.youtube.com/embed/' + safeVideoId
-      + '?autoplay=0&rel=0&modestbranding=1&origin=' + encodeURIComponent(window.location.origin);
-    youtubePlayer.innerHTML = '<iframe'
-      + ' src="' + embedUrl + '"'
-      + ' title="Live Video"'
-      + ' frameborder="0"'
-      + ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"'
-      + ' allowfullscreen'
-      + '></iframe>';
+    mountYouTubePlayer(videoId);
     youtubePlayer.hidden = false;
     if (playerPlaceholder) playerPlaceholder.hidden = true;
     if (playerTitle) playerTitle.textContent = 'Live Video';
@@ -205,19 +260,18 @@ export const CLIENT_APP_SOURCE = String.raw`
   }
 
   function seekVideoTo(seconds) {
-    if (!youtubePlayer || !currentVideoId) return;
-    var safeVideoId = encodeURIComponent(currentVideoId);
+    if (!currentVideoId) return;
     var start = Math.max(0, Math.floor(Number(seconds || 0)));
-    var embedUrl = 'https://www.youtube.com/embed/' + safeVideoId
-      + '?autoplay=1&rel=0&modestbranding=1&start=' + start
-      + '&origin=' + encodeURIComponent(window.location.origin);
-    youtubePlayer.innerHTML = '<iframe'
-      + ' src="' + embedUrl + '"'
-      + ' title="Live Video"'
-      + ' frameborder="0"'
-      + ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"'
-      + ' allowfullscreen'
-      + '></iframe>';
+    if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+      try {
+        ytPlayer.seekTo(start, true);
+        if (typeof ytPlayer.playVideo === 'function') {
+          ytPlayer.playVideo();
+        }
+        return;
+      } catch (_) {}
+    }
+    mountIframeFallback(currentVideoId, start, 1);
   }
 
   function normalizeTranscriptEntries(entries) {
@@ -375,6 +429,117 @@ export const CLIENT_APP_SOURCE = String.raw`
     var m = Math.floor(sec / 60);
     var s = sec % 60;
     return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function startAutoFollowLoop() {
+    if (autoFollowTimerId) return;
+    autoFollowTimerId = window.setInterval(syncTranscriptToPlayback, 200);
+  }
+
+  function syncTranscriptToPlayback() {
+    if (!autoFollow || autoFollow.value !== 'on') return;
+    if (!transcriptRows.length) return;
+    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
+    var currentTime = Number(ytPlayer.getCurrentTime());
+    if (!Number.isFinite(currentTime)) return;
+    var lookaheadTime = currentTime + 0.5;
+    var row = findRowForTime(lookaheadTime);
+    if (!row || row.id === activeRowId) return;
+    activeRowId = row.id;
+    refreshActiveTranscriptRow();
+    if (!transcriptList) return;
+    var target = transcriptList.querySelector('[data-row-id="' + row.id + '"]');
+    if (target) {
+      target.scrollIntoView({block: 'center', behavior: 'auto'});
+    }
+  }
+
+  function findRowForTime(timeSec) {
+    var chosen = transcriptRows[0];
+    for (var i = 0; i < transcriptRows.length; i++) {
+      if (transcriptRows[i].startSec <= timeSec) {
+        chosen = transcriptRows[i];
+      } else {
+        break;
+      }
+    }
+    return chosen;
+  }
+
+  function mountYouTubePlayer(videoId) {
+    waitForYouTubeApi().then(function () {
+      if (!youtubePlayer || !window.YT || typeof window.YT.Player !== 'function') {
+        mountIframeFallback(videoId, 0, 0);
+        return;
+      }
+      if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+        ytPlayer.loadVideoById({
+          videoId: videoId,
+          startSeconds: 0,
+        });
+        return;
+      }
+      ytPlayer = new window.YT.Player('youtube-player', {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 0,
+          rel: 0,
+          modestbranding: 1,
+          origin: window.location.origin,
+        },
+      });
+    }).catch(function () {
+      mountIframeFallback(videoId, 0, 0);
+    });
+  }
+
+  function waitForYouTubeApi() {
+    if (window.YT && typeof window.YT.Player === 'function') {
+      return Promise.resolve();
+    }
+    if (ytApiReadyPromise) {
+      return ytApiReadyPromise;
+    }
+    ytApiReadyPromise = new Promise(function (resolve, reject) {
+      var started = Date.now();
+      var timer = window.setInterval(function () {
+        if (window.YT && typeof window.YT.Player === 'function') {
+          window.clearInterval(timer);
+          resolve();
+          return;
+        }
+        if (Date.now() - started > 10000) {
+          window.clearInterval(timer);
+          reject(new Error('YouTube API load timeout'));
+        }
+      }, 80);
+    });
+    return ytApiReadyPromise;
+  }
+
+  function mountIframeFallback(videoId, startSec, autoplay) {
+    if (!youtubePlayer) return;
+    var safeVideoId = encodeURIComponent(String(videoId || ''));
+    var start = Math.max(0, Math.floor(Number(startSec || 0)));
+    var embedUrl = 'https://www.youtube.com/embed/' + safeVideoId
+      + '?autoplay=' + (autoplay ? '1' : '0')
+      + '&rel=0&modestbranding=1&start=' + start
+      + '&origin=' + encodeURIComponent(window.location.origin);
+    youtubePlayer.innerHTML = '<iframe'
+      + ' src="' + embedUrl + '"'
+      + ' title="Live Video"'
+      + ' frameborder="0"'
+      + ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"'
+      + ' allowfullscreen'
+      + '></iframe>';
+  }
+
+  function setControlSectionCollapsed(collapsed) {
+    if (!controlSection || !controlCollapseToggle) return;
+    controlSection.classList.toggle('is-collapsed', collapsed);
+    controlCollapseToggle.hidden = !hasLoadedWorkspace && !collapsed;
+    controlCollapseToggle.textContent = collapsed ? '▼' : '▲';
+    controlCollapseToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   }
 
   async function resolveVideoTitle(videoUrl, fallbackTitle) {
