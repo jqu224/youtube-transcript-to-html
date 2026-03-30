@@ -87,24 +87,12 @@ async function loadWatchPageAndPlayerResponse(videoId, fetchFn) {
  */
 export async function fetchWorkspaceMetadata(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
-  if (env && isYoutubeDataApiConfigured(env)) {
-    return fetchWorkspaceMetadataViaYoutubeApi(videoId, env, fetchFn);
+  if (!env || !isYoutubeDataApiConfigured(env)) {
+    throw new Error(
+      'YouTube Data API is not configured. Set YOUTUBE_KEY and YOUTUBE_ACCESS_TOKEN on this Worker.',
+    );
   }
-  const {playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
-  const tracks = extractCaptionTracks(playerResponse);
-  if (!tracks.length) {
-    throw new Error('This video does not expose any captions.');
-  }
-  const selectedTrack = pickCaptionTrack(tracks);
-  return {
-    video,
-    transcript: {
-      language: selectedTrack.languageCode || selectedTrack.name?.simpleText || '',
-      source: '',
-      entries: [],
-      pending: true,
-    },
-  };
+  return fetchWorkspaceMetadataViaYoutubeApi(videoId, env, fetchFn);
 }
 
 /**
@@ -112,35 +100,23 @@ export async function fetchWorkspaceMetadata(input, fetchFn = fetch, env) {
  */
 export async function fetchTranscriptPayload(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
-  if (env && isYoutubeDataApiConfigured(env)) {
-    return fetchTranscriptPayloadViaYoutubeApi(videoId, env, fetchFn);
+  if (!env || !isYoutubeDataApiConfigured(env)) {
+    throw new Error(
+      'YouTube Data API is not configured. Set YOUTUBE_KEY and YOUTUBE_ACCESS_TOKEN on this Worker.',
+    );
   }
-  const {videoPage, playerResponse} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
-  return fetchTranscriptFromPage({
-    videoId,
-    videoPage,
-    playerResponse,
-    fetchFn,
-  });
+  return fetchTranscriptPayloadViaYoutubeApi(videoId, env, fetchFn);
 }
 
 /** Single request: metadata + full transcript (one watch-page fetch, or Data API when configured). */
 export async function fetchWorkspaceData(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
-  if (env && isYoutubeDataApiConfigured(env)) {
-    return fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn);
+  if (!env || !isYoutubeDataApiConfigured(env)) {
+    throw new Error(
+      'YouTube Data API is not configured. Set YOUTUBE_KEY and YOUTUBE_ACCESS_TOKEN on this Worker.',
+    );
   }
-  const {videoPage, playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
-  const transcript = await fetchTranscriptFromPage({
-    videoId,
-    videoPage,
-    playerResponse,
-    fetchFn,
-  });
-  return {
-    video,
-    transcript,
-  };
+  return fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn);
 }
 
 export async function fetchTranscriptFromPage({videoId, videoPage, playerResponse, fetchFn = fetch}) {

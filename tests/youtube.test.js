@@ -140,45 +140,6 @@ describe('fetchTranscriptFromPage', () => {
   });
 });
 
-describe('fetchWorkspaceMetadata / YouTube watch fetch', () => {
-  it('retries when the watch page returns 429 then succeeds', async () => {
-    vi.useFakeTimers();
-    const html = minimalWatchPageHtml('xRh2sVcNXQ8');
-    let calls = 0;
-    const fetchFn = vi.fn(async () => {
-      calls += 1;
-      if (calls === 1) {
-        return {ok: false, status: 429, headers: new Headers()};
-      }
-      return {ok: true, status: 200, text: () => Promise.resolve(html)};
-    });
-
-    const p = fetchWorkspaceMetadata('https://www.youtube.com/watch?v=xRh2sVcNXQ8', fetchFn);
-    await vi.runAllTimersAsync();
-    const workspace = await p;
-
-    expect(calls).toBe(2);
-    expect(workspace.video.title).toBe('Test');
-    vi.useRealTimers();
-  });
-
-  it('throws a clear rate-limit message after repeated 429 responses', async () => {
-    vi.useFakeTimers();
-    const fetchFn = vi.fn(async () => ({
-      ok: false,
-      status: 429,
-      headers: new Headers(),
-    }));
-
-    const p = fetchWorkspaceMetadata('xRh2sVcNXQ8', fetchFn);
-    const assertion = expect(p).rejects.toThrow(/rate-limited/i);
-    await vi.runAllTimersAsync();
-    await assertion;
-    expect(fetchFn.mock.calls.length).toBe(4);
-    vi.useRealTimers();
-  });
-});
-
 describe('extractJsonAssignment', () => {
   it('parses embedded player response JSON blocks', () => {
     const payload = extractJsonAssignment(
