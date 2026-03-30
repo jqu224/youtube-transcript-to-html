@@ -8,6 +8,9 @@ export function bootstrapOAuthPopup() {
   var debugState = {
     pickedLanguage: '',
     trackKind: '',
+    captionId: '',
+    captionsDownloadStatus: '',
+    captionsDownloadLength: 0,
     json3Status: '',
     json3Length: 0,
     vttStatus: '',
@@ -27,6 +30,9 @@ export function bootstrapOAuthPopup() {
     debugEl.textContent = [
       'picked language: ' + String(debugState.pickedLanguage || '-'),
       'trackKind: ' + String(debugState.trackKind || '-'),
+      'captionId: ' + String(debugState.captionId || '-'),
+      'captions.download status: ' + String(debugState.captionsDownloadStatus || '-'),
+      'captions.download length: ' + String(debugState.captionsDownloadLength || 0),
       'json3 status: ' + String(debugState.json3Status || '-'),
       'json3 length: ' + String(debugState.json3Length || 0),
       'vtt status: ' + String(debugState.vttStatus || '-'),
@@ -173,6 +179,9 @@ export function bootstrapOAuthPopup() {
     setDebug({
       pickedLanguage: '',
       trackKind: '',
+      captionId: '',
+      captionsDownloadStatus: '',
+      captionsDownloadLength: 0,
       json3Status: '',
       json3Length: 0,
       vttStatus: '',
@@ -195,11 +204,13 @@ export function bootstrapOAuthPopup() {
     if (!items.length) {
       throw new Error('No caption tracks returned by YouTube API');
     }
-    var track = items[0] || {};
+    var track = pickBestCaptionTrack(items);
     var snippet = track.snippet || {};
+    var captionId = String(track.id || '').trim();
     var language = String(snippet.language || '').trim();
     var trackKind = String(snippet.trackKind || '').trim();
     setDebug({
+      captionId: captionId || '-',
       pickedLanguage: language,
       trackKind: trackKind || 'standard',
     });
@@ -208,6 +219,38 @@ export function bootstrapOAuthPopup() {
     }
     var isAuto = String(trackKind).toUpperCase() === 'ASR';
     var entries = [];
+
+    if (captionId) {
+      var downloadUrl = new URL('https://youtube.googleapis.com/youtube/v3/captions/' + encodeURIComponent(captionId));
+      downloadUrl.searchParams.set('tfmt', 'vtt');
+      var downloadResponse = await fetch(downloadUrl.toString(), {
+        headers: {Authorization: 'Bearer ' + accessToken},
+      });
+      var downloadText = await downloadResponse.text();
+      setDebug({
+        captionsDownloadStatus: String(downloadResponse.status),
+        captionsDownloadLength: String(downloadText || '').length,
+      });
+      if (downloadResponse.ok) {
+        entries = parseVttEntries(downloadText);
+        if (entries.length) {
+          setDebug({
+            selectedFormat: 'captions.download(vtt)',
+            entryCount: entries.length,
+          });
+        }
+      }
+    }
+
+    if (entries.length) {
+      return {
+        entries: entries,
+        fullText: entries.map(function(entry) { return entry.text; }).join(' ').trim(),
+        cueCount: entries.length,
+        source: 'browser_oauth_popup',
+        language: language,
+      };
+    }
 
     var timedtextJson3Url = new URL('https://www.youtube.com/api/timedtext');
     timedtextJson3Url.searchParams.set('v', videoId);
@@ -299,4 +342,14 @@ export function bootstrapOAuthPopup() {
   closeButton.addEventListener('click', function() {
     window.close();
   });
+}
+
+function pickBestCaptionTrack(items) {
+  var list = Array.isArray(items) ? items : [];
+  if (!list.length) return {};
+  var standard = list.find(function(item) {
+    var kind = String(item && item.snippet && item.snippet.trackKind ? item.snippet.trackKind : '').toUpperCase();
+    return kind !== 'ASR';
+  });
+  return standard || list[0] || {};
 }

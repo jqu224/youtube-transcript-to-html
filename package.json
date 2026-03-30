@@ -5,8 +5,9 @@
   "type": "module",
   "description": "Cloudflare Worker — YouTube transcript to AI notes workspace.",
   "scripts": {
-    "predev": "node scripts/sync-gemini-local-to-dev-vars.mjs",
+    "predev": "node scripts/sync-gemini-local-to-dev-vars.mjs && node scripts/sync-ui-html-templates.mjs",
     "sync-gemini": "node scripts/sync-gemini-local-to-dev-vars.mjs",
+    "sync-ui-html": "node scripts/sync-ui-html-templates.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:worker": "wrangler dev",
     "dev:fallback": "node scripts/local-transcript-fallback-server.mjs",
