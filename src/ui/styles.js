@@ -536,6 +536,68 @@ button:hover {
   align-items: center;
 }
 
+.transcript-time-toolbar {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.transcript-time-toolbar__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.transcript-time-batch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.transcript-slice-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.transcript-slice-btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.transcript-slice-btn:hover:not([disabled]) {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.transcript-slice-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.transcript-slice-indicator {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  min-width: 3.5rem;
+  text-align: center;
+}
+
 .pill {
   padding: 8px 12px;
   border-radius: 999px;

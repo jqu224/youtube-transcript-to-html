@@ -36,6 +36,11 @@ const LOCALE_DATA = {
     transcriptSubtitleInitial: 'Transcript cues will appear here',
     autoFollow: 'Auto Follow',
     transcriptWindow: 'Transcript Window',
+    transcriptTimeScopeLabel: 'Time scope',
+    transcriptSliceLengthLabel: 'Window length',
+    transcriptSlicePrev: 'Prev',
+    transcriptSliceNext: 'Next',
+    transcriptSliceSyncPlayhead: 'Match playhead',
     aiWorkspace: 'AI Workspace',
     workspaceSubtitle: 'Summary is the default tab. Mindmap, related videos, and people load on demand',
     generationControls: 'Generation Controls',
@@ -60,6 +65,14 @@ const LOCALE_DATA = {
       relatedFocus: {adjacent: 'Adjacent topics', 'same-speakers': 'Same speakers', 'deeper-dive': 'Deeper dive'},
       autoFollow: {on: 'On', off: 'Off'},
       transcriptWindow: {all: 'All cues', short: 'Compact'},
+      transcriptTimeScope: {full: 'Full', batch: 'Time window'},
+      transcriptSliceLength: {
+        '60000': '1 min',
+        '120000': '2 min',
+        '300000': '5 min',
+        '600000': '10 min',
+        '900000': '15 min',
+      },
       titleStyle: {editorial: 'Editorial', plain: 'Plain', bold: 'Bold'},
       quoteEmphasis: {high: 'High', balanced: 'Balanced', low: 'Low'},
       mindmapDepth: {balanced: 'Balanced', deep: 'Deep', overview: 'Overview'},
@@ -136,6 +149,11 @@ const LOCALE_DATA = {
     transcriptSubtitleInitial: '字幕内容会显示在这里',
     autoFollow: '自动跟随',
     transcriptWindow: '字幕窗口',
+    transcriptTimeScopeLabel: '时间范围',
+    transcriptSliceLengthLabel: '窗口时长',
+    transcriptSlicePrev: '上一段',
+    transcriptSliceNext: '下一段',
+    transcriptSliceSyncPlayhead: '对齐播放位置',
     aiWorkspace: 'AI 工作区',
     workspaceSubtitle: '默认显示摘要标签页，思维导图、相关视频和人物信息按需加载',
     generationControls: '生成控制',
@@ -160,6 +178,14 @@ const LOCALE_DATA = {
       relatedFocus: {adjacent: '相近主题', 'same-speakers': '同一讲者', 'deeper-dive': '更深挖'},
       autoFollow: {on: '开启', off: '关闭'},
       transcriptWindow: {all: '全部字幕', short: '紧凑'},
+      transcriptTimeScope: {full: '全部', batch: '按时间段'},
+      transcriptSliceLength: {
+        '60000': '1 分钟',
+        '120000': '2 分钟',
+        '300000': '5 分钟',
+        '600000': '10 分钟',
+        '900000': '15 分钟',
+      },
       titleStyle: {editorial: '编辑感', plain: '朴素', bold: '强烈'},
       quoteEmphasis: {high: '高', balanced: '平衡', low: '低'},
       mindmapDepth: {balanced: '平衡', deep: '深入', overview: '总览'},
@@ -249,6 +275,9 @@ const state = {
     person: null,
     transcript: null,
   },
+  transcriptTimeSlice: {
+    sliceIndex: 0,
+  },
 };
 
 const refs = {
@@ -292,6 +321,16 @@ const refs = {
   detailPane: document.getElementById('detail-pane'),
   autoFollow: document.getElementById('auto-follow'),
   transcriptWindow: document.getElementById('transcript-window'),
+  transcriptTimeToolbar: document.getElementById('transcript-time-toolbar'),
+  labelTranscriptTimeScope: document.getElementById('label-transcript-time-scope'),
+  transcriptTimeScope: document.getElementById('transcript-time-scope'),
+  transcriptTimeBatch: document.getElementById('transcript-time-batch'),
+  labelTranscriptSliceLength: document.getElementById('label-transcript-slice-length'),
+  transcriptSliceLength: document.getElementById('transcript-slice-length'),
+  transcriptSlicePrev: document.getElementById('transcript-slice-prev'),
+  transcriptSliceNext: document.getElementById('transcript-slice-next'),
+  transcriptSliceSync: document.getElementById('transcript-slice-sync'),
+  transcriptSliceIndicator: document.getElementById('transcript-slice-indicator'),
   tabButtons: Array.from(document.querySelectorAll('[data-tab-button]')),
   tone: document.getElementById('tone'),
   length: document.getElementById('length'),
@@ -344,6 +383,21 @@ function init() {
     });
   });
   refs.transcriptWindow.addEventListener('change', renderTranscriptList);
+  if (refs.transcriptTimeScope) {
+    refs.transcriptTimeScope.addEventListener('change', onTranscriptTimeScopeChange);
+  }
+  if (refs.transcriptSliceLength) {
+    refs.transcriptSliceLength.addEventListener('change', onTranscriptSliceLengthChange);
+  }
+  if (refs.transcriptSlicePrev) {
+    refs.transcriptSlicePrev.addEventListener('click', onTranscriptSlicePrevClick);
+  }
+  if (refs.transcriptSliceNext) {
+    refs.transcriptSliceNext.addEventListener('click', onTranscriptSliceNextClick);
+  }
+  if (refs.transcriptSliceSync) {
+    refs.transcriptSliceSync.addEventListener('click', onTranscriptSliceSyncClick);
+  }
   if (refs.transcriptScroll) {
     refs.transcriptScroll.addEventListener('scroll', onTranscriptPanelScroll, {passive: true});
     refs.transcriptScroll.addEventListener('click', onTranscriptCueClick);
@@ -583,6 +637,13 @@ async function loadWorkspace() {
   state.requests.workspace = controller;
   refs.loadButton.disabled = true;
   refs.regenerateButton.disabled = true;
+  state.transcriptTimeSlice.sliceIndex = 0;
+  if (refs.transcriptTimeScope) {
+    refs.transcriptTimeScope.value = 'full';
+  }
+  if (refs.transcriptTimeBatch) {
+    refs.transcriptTimeBatch.hidden = true;
+  }
   setStatus(t('statusLoadingGeminiAndMeta'), 'loading');
 
   try {
@@ -1042,6 +1103,7 @@ function onTranscriptCueClick(ev) {
 }
 
 function renderTranscriptList() {
+  try {
   if (!state.workspace) {
     refs.transcriptList.innerHTML = '<div class="empty-state">' + escapeHtml(t('transcriptEmptyInitial')) + '</div>';
     return;
@@ -1115,10 +1177,177 @@ function renderTranscriptList() {
   refs.transcriptList.innerHTML = entries.map(function(entry) {
     return buildTranscriptCueButtonHtml(entry);
   }).join('');
+  } finally {
+    updateTranscriptSliceControls();
+  }
+}
+
+/** @see ../lib/transcript-time-slice.js — keep in sync */
+function computeTranscriptTimeSliceBounds(params) {
+  const dur = Math.max(1, Number(params.sliceDurationMs) || 60000);
+  const len = Math.max(0, Number(params.videoLengthMs) || 0);
+  let sliceCount;
+  let idx = Math.max(0, Number(params.sliceIndex) || 0);
+  if (len <= 0) {
+    sliceCount = 1;
+    idx = 0;
+    return {
+      startMs: 0,
+      endMs: Number.POSITIVE_INFINITY,
+      sliceCount: sliceCount,
+      sliceIndex: idx,
+    };
+  }
+  sliceCount = Math.max(1, Math.ceil(len / dur));
+  idx = Math.min(idx, sliceCount - 1);
+  const startMs = idx * dur;
+  const endMs = Math.min(len, (idx + 1) * dur);
+  return {startMs: startMs, endMs: endMs, sliceCount: sliceCount, sliceIndex: idx};
+}
+
+function filterTranscriptEntriesByTimeSlice(entries, startMs, endMs) {
+  if (!Array.isArray(entries) || !entries.length) {
+    return [];
+  }
+  const s = Number(startMs) || 0;
+  const e = Number(endMs);
+  const endIsInf = !Number.isFinite(e) || e === Number.POSITIVE_INFINITY;
+  return entries.filter(function(entry) {
+    const start = Number(entry.startMs) || 0;
+    const dur = Math.max(0, Number(entry.durationMs) || 0);
+    const cueEnd = dur > 0 ? start + dur : start + 1;
+    if (endIsInf) {
+      return start >= s;
+    }
+    return start < e && cueEnd > s;
+  });
+}
+
+function inferVideoLengthMsFromWorkspace(workspace, entries) {
+  const sec = Number(workspace && workspace.video && workspace.video.lengthSeconds ? workspace.video.lengthSeconds : 0);
+  if (sec > 0) {
+    return sec * 1000;
+  }
+  if (!Array.isArray(entries) || !entries.length) {
+    return 0;
+  }
+  const last = entries[entries.length - 1];
+  const st = Number(last.startMs) || 0;
+  const dur = Math.max(0, Number(last.durationMs) || 0);
+  return st + (dur > 0 ? dur : 2000);
+}
+
+function getWorkspaceVideoLengthMs() {
+  if (!state.workspace) {
+    return 0;
+  }
+  return inferVideoLengthMsFromWorkspace(state.workspace, getCurrentTranscriptEntries());
+}
+
+function transcriptBatchModeActive() {
+  return refs.transcriptTimeScope && refs.transcriptTimeScope.value === 'batch';
+}
+
+function applyTranscriptTimeSliceFilter(entries) {
+  if (!transcriptBatchModeActive()) {
+    return entries;
+  }
+  const lenMs = getWorkspaceVideoLengthMs();
+  const sliceMs = refs.transcriptSliceLength ? Number(refs.transcriptSliceLength.value) || 300000 : 300000;
+  const bounds = computeTranscriptTimeSliceBounds({
+    videoLengthMs: lenMs,
+    sliceDurationMs: sliceMs,
+    sliceIndex: state.transcriptTimeSlice.sliceIndex,
+  });
+  state.transcriptTimeSlice.sliceIndex = bounds.sliceIndex;
+  return filterTranscriptEntriesByTimeSlice(entries, bounds.startMs, bounds.endMs);
+}
+
+function updateTranscriptSliceControls() {
+  if (!refs.transcriptSliceIndicator || !refs.transcriptTimeBatch) {
+    return;
+  }
+  const batchOn = transcriptBatchModeActive();
+  refs.transcriptTimeBatch.hidden = !batchOn;
+  if (!state.workspace) {
+    refs.transcriptSliceIndicator.textContent = '—';
+    if (refs.transcriptSlicePrev) {
+      refs.transcriptSlicePrev.disabled = true;
+    }
+    if (refs.transcriptSliceNext) {
+      refs.transcriptSliceNext.disabled = true;
+    }
+    return;
+  }
+  if (!batchOn) {
+    return;
+  }
+  const lenMs = getWorkspaceVideoLengthMs();
+  const sliceMs = refs.transcriptSliceLength ? Number(refs.transcriptSliceLength.value) || 300000 : 300000;
+  const bounds = computeTranscriptTimeSliceBounds({
+    videoLengthMs: lenMs,
+    sliceDurationMs: sliceMs,
+    sliceIndex: state.transcriptTimeSlice.sliceIndex,
+  });
+  state.transcriptTimeSlice.sliceIndex = bounds.sliceIndex;
+  refs.transcriptSliceIndicator.textContent = String(bounds.sliceIndex + 1) + ' / ' + String(bounds.sliceCount);
+  if (refs.transcriptSlicePrev) {
+    refs.transcriptSlicePrev.disabled = bounds.sliceIndex <= 0;
+  }
+  if (refs.transcriptSliceNext) {
+    refs.transcriptSliceNext.disabled = bounds.sliceIndex >= bounds.sliceCount - 1;
+  }
+}
+
+function onTranscriptTimeScopeChange() {
+  if (refs.transcriptTimeBatch) {
+    refs.transcriptTimeBatch.hidden = !transcriptBatchModeActive();
+  }
+  if (!transcriptBatchModeActive()) {
+    state.transcriptTimeSlice.sliceIndex = 0;
+  }
+  renderTranscriptList();
+}
+
+function onTranscriptSliceLengthChange() {
+  state.transcriptTimeSlice.sliceIndex = 0;
+  renderTranscriptList();
+}
+
+function onTranscriptSlicePrevClick() {
+  if (state.transcriptTimeSlice.sliceIndex > 0) {
+    state.transcriptTimeSlice.sliceIndex -= 1;
+    renderTranscriptList();
+  }
+}
+
+function onTranscriptSliceNextClick() {
+  state.transcriptTimeSlice.sliceIndex += 1;
+  renderTranscriptList();
+}
+
+function onTranscriptSliceSyncClick() {
+  const lenMs = getWorkspaceVideoLengthMs();
+  const sliceMs = refs.transcriptSliceLength ? Number(refs.transcriptSliceLength.value) || 300000 : 300000;
+  let tMs = 0;
+  if (state.player && typeof state.player.getCurrentTime === 'function') {
+    tMs = Math.floor(state.player.getCurrentTime() * 1000);
+  }
+  if (lenMs <= 0) {
+    state.transcriptTimeSlice.sliceIndex = 0;
+  } else {
+    const sliceCount = Math.max(1, Math.ceil(lenMs / sliceMs));
+    state.transcriptTimeSlice.sliceIndex = Math.min(
+      Math.max(0, Math.floor(tMs / sliceMs)),
+      sliceCount - 1,
+    );
+  }
+  renderTranscriptList();
 }
 
 function getVisibleTranscriptEntries() {
-  const entries = getCurrentTranscriptEntries();
+  let entries = getCurrentTranscriptEntries();
+  entries = applyTranscriptTimeSliceFilter(entries);
   if (refs.transcriptWindow.value !== 'short' || !state.currentCueId) {
     return entries;
   }
@@ -1455,6 +1684,27 @@ function applyLocale() {
   refs.transcriptTitle.textContent = copy.liveTranscript;
   setLabelText(refs.labelAutoFollow, copy.autoFollow);
   setLabelText(refs.labelTranscriptWindow, copy.transcriptWindow);
+  if (refs.labelTranscriptTimeScope) {
+    setLabelText(refs.labelTranscriptTimeScope, copy.transcriptTimeScopeLabel);
+  }
+  if (refs.labelTranscriptSliceLength) {
+    setLabelText(refs.labelTranscriptSliceLength, copy.transcriptSliceLengthLabel);
+  }
+  if (refs.transcriptTimeScope && copy.selectOptions.transcriptTimeScope) {
+    setSelectOptionLabels(refs.transcriptTimeScope, copy.selectOptions.transcriptTimeScope);
+  }
+  if (refs.transcriptSliceLength && copy.selectOptions.transcriptSliceLength) {
+    setSelectOptionLabels(refs.transcriptSliceLength, copy.selectOptions.transcriptSliceLength);
+  }
+  if (refs.transcriptSlicePrev) {
+    refs.transcriptSlicePrev.textContent = copy.transcriptSlicePrev;
+  }
+  if (refs.transcriptSliceNext) {
+    refs.transcriptSliceNext.textContent = copy.transcriptSliceNext;
+  }
+  if (refs.transcriptSliceSync) {
+    refs.transcriptSliceSync.textContent = copy.transcriptSliceSyncPlayhead;
+  }
   refs.workspaceTitle.textContent = copy.aiWorkspace;
   refs.workspaceSubtitle.textContent = copy.workspaceSubtitle;
   refs.generationSectionTitle.textContent = copy.generationControls;

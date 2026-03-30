@@ -157,6 +157,33 @@ export function renderAppPage() {
                     </select>
                   </label>
                 </div>
+                <div class="transcript-time-toolbar" id="transcript-time-toolbar">
+                  <label id="label-transcript-time-scope" class="transcript-time-toolbar__label">
+                    Time scope
+                    <select id="transcript-time-scope">
+                      <option value="full">Full</option>
+                      <option value="batch">Time window</option>
+                    </select>
+                  </label>
+                  <div class="transcript-time-batch" id="transcript-time-batch" hidden>
+                    <label id="label-transcript-slice-length" class="transcript-time-toolbar__label">
+                      Window length
+                      <select id="transcript-slice-length">
+                        <option value="60000">1 min</option>
+                        <option value="120000">2 min</option>
+                        <option value="300000" selected>5 min</option>
+                        <option value="600000">10 min</option>
+                        <option value="900000">15 min</option>
+                      </select>
+                    </label>
+                    <div class="transcript-slice-nav">
+                      <button type="button" id="transcript-slice-prev" class="transcript-slice-btn">Prev</button>
+                      <span id="transcript-slice-indicator" class="transcript-slice-indicator" aria-live="polite">1 / 1</span>
+                      <button type="button" id="transcript-slice-next" class="transcript-slice-btn">Next</button>
+                      <button type="button" id="transcript-slice-sync" class="transcript-slice-btn">Match playhead</button>
+                    </div>
+                  </div>
+                </div>
               </header>
               <div class="panel-body transcript-scroll" id="transcript-scroll">
                 <div class="transcript-list" id="transcript-list">

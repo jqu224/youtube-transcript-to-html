@@ -44,6 +44,7 @@ export async function pingLlm(env, fetchFn = fetch) {
     apiKey: env.GEMINI_API_KEY,
     model,
     fetchFn,
+    env,
   });
   return {model, provider: 'google'};
 }
@@ -75,6 +76,7 @@ export async function streamLlmText(env, {prompt, temperature = 0.5, onTextChunk
     temperature,
     onTextChunk,
     fetchFn,
+    env,
   });
 }
 
@@ -103,5 +105,6 @@ export async function generateLlmJson(env, {prompt, temperature = 0.4, fetchFn =
     prompt,
     temperature,
     fetchFn,
+    env,
   });
 }
