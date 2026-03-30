@@ -121,7 +121,7 @@ export function bootstrapAppClient() {
         setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
       } catch (error) {
         if (error && error.code === 'youtube_captcha_required') {
-          renderCaptchaRecoveryNotice(url, error);
+          renderCaptchaRecoveryNotice(error);
           setStatus('YouTube verification required before retry', 'error');
           return;
         }
@@ -188,8 +188,11 @@ export function bootstrapAppClient() {
       if (!trigger) return;
       var action = String(trigger.getAttribute('data-recovery-action') || '');
       if (action === 'open-youtube-check') {
-        var openUrl = pendingCaptchaOpenUrl || trigger.getAttribute('data-open-url') || currentVideoUrl || 'https://www.youtube.com';
-        window.open(String(openUrl), '_blank', 'noopener,noreferrer');
+        var openUrl = pendingCaptchaOpenUrl || trigger.getAttribute('data-open-url') || 'https://www.youtube.com/';
+        var opened = window.open(String(openUrl), '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          window.location.href = String(openUrl);
+        }
         setStatus('Complete the YouTube check then retry', 'loading');
         return;
       }
@@ -236,11 +239,11 @@ export function bootstrapAppClient() {
     renderActiveWorkspaceTab();
   }
 
-  function renderCaptchaRecoveryNotice(inputUrl, error) {
+  function renderCaptchaRecoveryNotice(error) {
     if (!analysisMain) return;
     if (analysisEmpty) analysisEmpty.remove();
     var recovery = error && error.data && error.data.recovery ? error.data.recovery : {};
-    pendingCaptchaOpenUrl = String(recovery.openUrl || currentVideoUrl || inputUrl || 'https://www.youtube.com');
+    pendingCaptchaOpenUrl = String(recovery.openUrl || 'https://www.youtube.com/');
     var fallback = error && error.data && error.data.fallback ? error.data.fallback : {};
     var fallbackNote = '';
     if (fallback && fallback.error) {
@@ -251,9 +254,10 @@ export function bootstrapAppClient() {
       + '<h3>YouTube verification needed</h3>'
       + '<p>YouTube asked for a captcha or anti-bot check for this IP.</p>'
       + '<p>Open YouTube in a new tab, finish verification, then retry.</p>'
+      + '<p><a class="inline-link" href="' + escapeHtml(pendingCaptchaOpenUrl) + '" target="_blank" rel="noopener noreferrer">Open YouTube Verification Link</a></p>'
       + fallbackNote
       + '<div class="action-stack">'
-      + '<button type="button" class="primary-button" data-recovery-action="open-youtube-check" data-open-url="' + escapeHtml(pendingCaptchaOpenUrl) + '">Open YouTube Check</button>'
+      + '<button type="button" class="primary-button" data-recovery-action="open-youtube-check" data-open-url="' + escapeHtml(pendingCaptchaOpenUrl) + '">Open YouTube Verification</button>'
       + '<button type="button" class="primary-button" data-recovery-action="retry-load-workspace">Retry Load Workspace</button>'
       + '</div>'
       + '</div>';

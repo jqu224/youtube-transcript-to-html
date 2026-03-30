@@ -67,12 +67,9 @@ export async function fetchTranscript(videoId, options = {}) {
   };
 }
 
-export function mapTranscriptFetchError(error, context = {}) {
+export function mapTranscriptFetchError(error, _context = {}) {
   const rawMessage = String(error && error.message ? error.message : '').trim();
-  const videoId = String(context.videoId || '');
-  const openUrl = VIDEO_ID_PATTERN.test(videoId)
-    ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
-    : 'https://www.youtube.com';
+  const openUrl = 'https://www.youtube.com/';
 
   if (TOO_MANY_REQUESTS_PATTERN.test(rawMessage)) {
     return makeHttpError(

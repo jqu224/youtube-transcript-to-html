@@ -35,7 +35,7 @@ describe('mapTranscriptFetchError', () => {
 
     expect(error.status).toBe(429);
     expect(error.code).toBe('youtube_captcha_required');
-    expect(error.data && error.data.recovery && error.data.recovery.openUrl).toBeTypeOf('string');
+    expect(error.data && error.data.recovery && error.data.recovery.openUrl).toBe('https://www.youtube.com/');
     expect(error.message).toMatch(/temporarily blocked transcript requests/i);
     expect(error.message).toMatch(/switch network/i);
   });
