@@ -137,7 +137,6 @@ export async function fetchWorkspaceData(input, fetchFn = fetch, env) {
     playerResponse,
     fetchFn,
   });
-
   return {
     video,
     transcript,
