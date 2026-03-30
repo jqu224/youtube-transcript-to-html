@@ -130,14 +130,14 @@ export function bootstrapAppClient() {
         var cueCount = Number(transcriptPayload.cueCount || transcriptEntries.length || 0);
         var sourceLabel = describeTranscriptSource(transcriptPayload && transcriptPayload.source);
         setStatus('Loaded ' + cueCount + ' cues via ' + sourceLabel, 'success');
-        // var generated = await Promise.all([
-        //   postJson('/api/smartnote', {transcript: transcriptPayload.fullText}),
-        //   postJson('/api/summary', {transcript: transcriptPayload.fullText}),
-        // ]);
-        // smartnoteHtml = generated[0] && generated[0].html ? generated[0].html : '';
-        // summaryHtml = generated[1] && generated[1].html ? generated[1].html : '';
-        // renderActiveWorkspaceTab();
-        // setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
+        var generated = await Promise.all([
+          postJson('/api/smartnote', {transcript: transcriptPayload.fullText}),
+          postJson('/api/summary', {transcript: transcriptPayload.fullText}),
+        ]);
+        smartnoteHtml = generated[0] && generated[0].html ? generated[0].html : '';
+        summaryHtml = generated[1] && generated[1].html ? generated[1].html : '';
+        renderActiveWorkspaceTab();
+        setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
       } catch (error) {
         if (error && error.code === 'youtube_captcha_required') {
           renderCaptchaRecoveryNotice(error);
