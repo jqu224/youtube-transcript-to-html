@@ -50,6 +50,9 @@ export async function fetchTranscript(videoId, options = {}) {
       return await fetchTranscriptViaApiKey(videoId, {env});
     } catch (_) {}
   }
+  try {
+    return await fetchTranscriptViaCaptionExtractor(videoId, {env});
+  } catch (_) {}
   let entries;
   try {
     entries = await fetchYouTubeTranscript(videoId);
@@ -78,6 +81,43 @@ export async function fetchTranscript(videoId, options = {}) {
     fullText,
     cueCount: entries.length,
     source: 'youtube_transcript_library',
+  };
+}
+
+export async function fetchTranscriptViaCaptionExtractor(videoId, options = {}) {
+  const extractCaptionsImpl = options && typeof options.extractCaptionsImpl === 'function'
+    ? options.extractCaptionsImpl
+    : await loadCaptionExtractor();
+
+  const language = String(
+    (options && options.env && options.env.YOUTUBE_CAPTION_LANG)
+      ? options.env.YOUTUBE_CAPTION_LANG
+      : 'en',
+  ).trim() || 'en';
+
+  const rawCaptions = await extractCaptionsImpl({
+    videoId: String(videoId || ''),
+    lang: language,
+  });
+
+  const entries = normalizeCaptionExtractorEntries(rawCaptions);
+  if (!entries.length) {
+    throw makeHttpError(
+      'youtube-caption-extractor returned no transcript entries',
+      404,
+      null,
+      'youtube_caption_extractor_empty',
+    );
+  }
+
+  const fullText = entries.map((entry) => entry.text).join(' ').trim();
+  return {
+    videoId,
+    entries,
+    fullText,
+    cueCount: entries.length,
+    source: 'youtube_caption_extractor',
+    language,
   };
 }
 
@@ -263,4 +303,63 @@ function parseJson3Entries(source) {
     });
   }
   return entries;
+}
+
+function normalizeCaptionExtractorEntries(rawCaptions) {
+  const list = Array.isArray(rawCaptions) ? rawCaptions : [];
+  const entries = [];
+  for (const item of list) {
+    const text = String(item && item.text ? item.text : '').trim();
+    if (!text) continue;
+
+    const rawOffset = firstFiniteNumber(
+      item && item.offset,
+      item && item.start,
+      item && item.startSeconds,
+      item && item.startSec,
+      item && item.startMs,
+    );
+    const rawDuration = firstFiniteNumber(
+      item && item.duration,
+      item && item.dur,
+      item && item.durationSeconds,
+      item && item.durationSec,
+      item && item.durationMs,
+    );
+
+    const offset = normalizeSeconds(rawOffset);
+    const duration = Math.max(0.1, normalizeSeconds(rawDuration));
+    entries.push({text, offset, duration});
+  }
+  return entries;
+}
+
+async function loadCaptionExtractor() {
+  const module = await import('youtube-caption-extractor');
+  const extractCaptions = module && typeof module.extractCaptions === 'function'
+    ? module.extractCaptions
+    : null;
+  if (!extractCaptions) {
+    throw makeHttpError(
+      'youtube-caption-extractor does not export extractCaptions',
+      500,
+      null,
+      'youtube_caption_extractor_invalid_module',
+    );
+  }
+  return extractCaptions;
+}
+
+function normalizeSeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1000 ? n / 1000 : n;
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
 }

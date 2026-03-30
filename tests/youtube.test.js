@@ -1,6 +1,12 @@
 import {describe, expect, it} from 'vitest';
 
-import {extractVideoId, fetchTranscriptViaApiKey, fetchTranscriptViaOAuth, mapTranscriptFetchError} from '../src/lib/youtube.js';
+import {
+  extractVideoId,
+  fetchTranscriptViaApiKey,
+  fetchTranscriptViaCaptionExtractor,
+  fetchTranscriptViaOAuth,
+  mapTranscriptFetchError,
+} from '../src/lib/youtube.js';
 
 describe('extractVideoId', () => {
   it('extracts from standard watch URL', () => {
@@ -116,5 +122,22 @@ describe('fetchTranscriptViaOAuth', () => {
     expect(payload.source).toBe('youtube_oauth_timedtext');
     expect(payload.fullText).toBe('oauth flow');
     expect(authorizationHeaders[0]).toBe('Bearer oauth-token-1');
+  });
+});
+
+describe('fetchTranscriptViaCaptionExtractor', () => {
+  it('normalizes extractor entries into transcript payload', async () => {
+    const payload = await fetchTranscriptViaCaptionExtractor('dQw4w9WgXcQ', {
+      env: {YOUTUBE_CAPTION_LANG: 'en'},
+      extractCaptionsImpl: async () => ([
+        {text: 'hello', start: 1.2, dur: 2.4},
+        {text: 'world', startMs: 5000, durationMs: 1500},
+      ]),
+    });
+
+    expect(payload.source).toBe('youtube_caption_extractor');
+    expect(payload.cueCount).toBe(2);
+    expect(payload.fullText).toBe('hello world');
+    expect(payload.entries[1].offset).toBe(5);
   });
 });

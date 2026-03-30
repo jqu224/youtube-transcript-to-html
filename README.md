@@ -96,7 +96,7 @@ When `YOUTUBE_KEY` is set, the app now attempts:
 2. public `timedtext` fetch using discovered caption language
 
 When `YOUTUBE_CLIENT_ID` is also set, the frontend shows `Authorize YouTube` and can send OAuth access token to Worker; transcript loading then tries OAuth captions path first, then API key path.  
-If those paths fail, it falls back to `youtube-transcript`, then local `yt-dlp` fallback (if configured).  
+If those paths fail, it now falls back to `youtube-caption-extractor`, then `youtube-transcript`, then local `yt-dlp` fallback (if configured).  
 `YOUTUBE_KEY` can improve track discovery in some cases but still does not guarantee transcripts for every random video.
 
 When Worker-side fetch hits anti-bot limits, the recovery card can open `/popup/youtube-transcript-auth`.  
