@@ -72,7 +72,10 @@ generationControls --> peopleTab
 ### Server
 - `src/worker.js`: request routing and API surface.
 - `src/lib/youtube.js`: YouTube ID parsing, watch-page parsing, caption extraction, search parsing.
-- `src/lib/gemini.js`: Gemini streaming and JSON helpers.
+- `src/lib/youtube-data-api.js`: optional [YouTube Data API v3](https://developers.google.com/youtube/v3) `captions.list` + `captions.download` (no `youtube.com/watch` scrape) when `YOUTUBE_KEY` and `YOUTUBE_ACCESS_TOKEN` are set.
+- `src/lib/gemini.js`: Google Gemini streaming and JSON helpers.
+- `src/lib/siliconflow.js`: optional [SiliconFlow](https://siliconflow.cn) `/v1/messages` for local dev when `AI_ENV=local`.
+- `src/lib/llm.js`: routes between Gemini (default) and SiliconFlow for Worker requests.
 - `src/lib/speaker-transcript.js`: baoyu-style speaker transcript prompt (`speaker-transcript.md` bundled as JSON).
 - `src/lib/prompt.js`: prompt builders for summary and derived tabs.
 - `src/lib/recommendations.js`: related-video ranking flow.
@@ -112,6 +115,8 @@ npm install
 
 **Production:** configure `GEMINI_API_KEY` as a Worker secret in the Cloudflare dashboard (`env.GEMINI_API_KEY`); do not rely on `config/gemini.local.json` on the server.
 
+**Local dev — SiliconFlow (optional):** if Google Generative Language API is unreachable from your network, copy [`config/gemini.local.siliconflow.example.json`](config/gemini.local.siliconflow.example.json) to **`config/gemini.local.json`**, set `SILICONFLOW_API_KEY`, and keep **`AI_ENV` as `local`**. `npm run dev` syncs those vars into `.dev.vars`; the Worker uses [`src/lib/siliconflow.js`](src/lib/siliconflow.js) instead of Gemini. Rotate any key that was ever pasted into chat or committed.
+
 ### 3. Run locally
 
 ```bash
@@ -136,7 +141,29 @@ GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
-If a key was ever committed to git or shared in chat, **rotate it** in [Google AI Studio](https://aistudio.google.com/apikey) and update only local `config/gemini.local.json` or `.dev.vars`.
+Optional — load captions via **YouTube Data API** instead of scraping the watch page (set both in `.dev.vars` or Cloudflare Worker secrets):
+
+```bash
+YOUTUBE_KEY=your_youtube_data_api_key
+YOUTUBE_ACCESS_TOKEN=your_oauth2_access_token
+```
+
+The Worker calls `GET https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=…&key=…` with `Authorization: Bearer …`, picks a caption track (each item has top-level `id` and `snippet`), then `GET https://www.googleapis.com/youtube/v3/captions/{captionId}?key=…&tfmt=vtt` (response is often `application/octet-stream`; we decode as UTF-8 WebVTT) and parses cues. Create an API key in [Google Cloud Console](https://console.cloud.google.com/apis/credentials), enable the **YouTube Data API v3**, and obtain an OAuth 2.0 access token with a scope that allows caption access (for example `https://www.googleapis.com/auth/youtube.force-ssl`). Access tokens expire; use a refresh flow or regenerate the token when uploads fail with `401`/`403`.
+
+If `YOUTUBE_KEY` or `YOUTUBE_ACCESS_TOKEN` is missing, the Worker falls back to the legacy **watch-page + timedtext** path in `youtube.js`.
+
+**Debug:** open the app with `?workspaceDebug=1` (e.g. `http://127.0.0.1:8788/?workspaceDebug=1`). The browser console logs each NDJSON stream event; the Worker logs `captions.list` / download steps; the first stream line may include `workspaceDebug` with the caption id list and picked track when using the Data API.
+
+Optional (Worker + `npm run gemini:ping` when using SiliconFlow locally):
+
+```bash
+AI_ENV=local
+SILICONFLOW_API_KEY=your_siliconflow_key
+SILICONFLOW_MODEL=Pro/zai-org/GLM-4.7
+SILICONFLOW_MESSAGES_URL=https://api.siliconflow.cn/v1/messages
+```
+
+If a key was ever committed to git or shared in chat, **rotate it** in [Google AI Studio](https://aistudio.google.com/apikey) or your SiliconFlow account and update only local `config/gemini.local.json` or `.dev.vars`.
 
 ## Baoyu speaker pipeline (local CLI + optional Worker stream)
 
@@ -163,7 +190,7 @@ Current automated coverage focuses on:
 - render-model helpers
 
 ## Known Limitations
-- YouTube transcript and search parsing relies on public page structures, so upstream markup changes can break adapters.
+- YouTube transcript and search parsing relies on public page structures unless you configure the Data API keys above; upstream markup changes can break the scrape path.
 - The summary stream is the strongest experience today; the secondary tabs are intentionally built with graceful fallbacks.
 - Person detail enrichment prefers Wikipedia plus search links rather than a fully curated knowledge graph.
 - The client sanitizes summary HTML, but the app still assumes model output stays within the requested semantic tag set.

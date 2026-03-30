@@ -4,9 +4,33 @@ import {
   extractJsonAssignment,
   extractVideoId,
   fetchTranscriptFromPage,
+  fetchWorkspaceMetadata,
   parseJson3Transcript,
   pickCaptionTrack,
 } from '../src/lib/youtube.js';
+
+function minimalWatchPageHtml(videoId) {
+  const playerResponse = {
+    videoDetails: {
+      title: 'Test',
+      author: 'Ch',
+      lengthSeconds: '60',
+      thumbnail: {thumbnails: [{url: 'https://i.ytimg.com/vi/x/hqdefault.jpg'}]},
+    },
+    microformat: {playerMicroformatRenderer: {}},
+    captions: {
+      playerCaptionsTracklistRenderer: {
+        captionTracks: [
+          {
+            languageCode: 'en',
+            baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}`,
+          },
+        ],
+      },
+    },
+  };
+  return `<!doctype html><script>var ytInitialPlayerResponse = ${JSON.stringify(playerResponse)};</script>`;
+}
 
 describe('extractVideoId', () => {
   it('accepts raw video ids and common url formats', () => {

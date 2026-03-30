@@ -1,6 +1,5 @@
 /**
- * Standalone script for /simplified-version — loads workspace metadata then NDJSON transcript stream.
- * Kept separate from the main CLIENT_APP_SOURCE bundle.
+ * Standalone script for /simplified-version — one NDJSON stream (workspace head + cue chunks).
  */
 export const SIMPLIFIED_VERSION_CLIENT_SOURCE = String.raw`
 (function() {
@@ -66,42 +65,24 @@ export const SIMPLIFIED_VERSION_CLIENT_SOURCE = String.raw`
     loadBtn.disabled = true;
     transcriptEl.innerHTML = '';
     videoPanel.hidden = true;
-    setStatus('Loading video metadata', 'loading');
+    setStatus('Loading video and captions', 'loading');
 
     try {
-      var wsRes = await fetch('/api/workspace', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({url: url}),
-        signal: signal,
-      });
-      var wsPayload = await wsRes.json();
-      if (!wsRes.ok) {
-        throw new Error(wsPayload.error || 'Workspace request failed');
-      }
-
-      var video = wsPayload.video;
-      videoTitle.textContent = video.title || 'Video';
-      videoMeta.textContent = (video.channelTitle || '') + (video.watchUrl ? ' · ' + video.watchUrl : '');
-      videoPanel.hidden = false;
-
-      setStatus('Loading captions', 'loading');
-
-      var trRes = await fetch('/api/transcript?stream=1', {
+      var res = await fetch('/api/workspace?stream=1', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
         body: JSON.stringify({url: url}),
         signal: signal,
       });
 
-      if (!trRes.ok) {
-        var errPayload = await trRes.json().catch(function() {
+      if (!res.ok) {
+        var errPayload = await res.json().catch(function() {
           return {};
         });
-        throw new Error(errPayload.error || 'Transcript request failed');
+        throw new Error(errPayload.error || 'Load failed');
       }
 
-      var reader = trRes.body.getReader();
+      var reader = res.body.getReader();
       var decoder = new TextDecoder();
       var buffer = '';
       var expectedTotal = 0;
@@ -109,8 +90,14 @@ export const SIMPLIFIED_VERSION_CLIENT_SOURCE = String.raw`
 
       function processLine(line) {
         var msg = JSON.parse(line);
-        if (msg.type === 'head') {
-          expectedTotal = typeof msg.total === 'number' ? msg.total : 0;
+        if (msg.type === 'head' && msg.workspace) {
+          var video = msg.workspace.video;
+          videoTitle.textContent = video.title || 'Video';
+          videoMeta.textContent = (video.channelTitle || '') + (video.watchUrl ? ' · ' + video.watchUrl : '');
+          videoPanel.hidden = false;
+          var tr = msg.workspace.transcript || {};
+          expectedTotal = typeof tr.expectedTotal === 'number' ? tr.expectedTotal : 0;
+          setStatus('Loading captions', 'loading');
           return;
         }
         if (msg.type === 'chunk' && Array.isArray(msg.entries)) {

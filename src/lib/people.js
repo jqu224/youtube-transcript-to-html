@@ -1,18 +1,15 @@
-import {generateGeminiJson} from './gemini.js';
+import {generateLlmJson} from './llm.js';
 import {buildPeoplePrompt, buildPersonDetailPrompt} from './prompt.js';
 import {searchYouTubeVideos} from './youtube.js';
 
 export async function buildPeopleTab({
-  apiKey,
-  model,
+  env,
   video,
   transcriptEntries,
   options,
   fetchFn = fetch,
 }) {
-  const result = await generateGeminiJson({
-    apiKey,
-    model,
+  const result = await generateLlmJson(env, {
     prompt: buildPeoplePrompt({
       video,
       transcriptEntries,
@@ -36,8 +33,7 @@ export async function buildPeopleTab({
 }
 
 export async function buildPersonDetail({
-  apiKey,
-  model,
+  env,
   personName,
   video,
   transcriptEntries,
@@ -46,9 +42,7 @@ export async function buildPersonDetail({
 }) {
   const language = options?.language === 'zh' ? 'zh' : 'en';
   const [aiDetail, wikiProfile, relatedVideos] = await Promise.all([
-    generateGeminiJson({
-      apiKey,
-      model,
+    generateLlmJson(env, {
       prompt: buildPersonDetailPrompt({
         personName,
         video,

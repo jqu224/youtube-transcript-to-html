@@ -154,6 +154,7 @@ export function renderAppPage() {
                     <select id="transcript-window">
                       <option value="all">All cues</option>
                       <option value="short">Compact</option>
+                      <option value="blocks" selected>15 sec blocks</option>
                     </select>
                   </label>
                 </div>

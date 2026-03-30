@@ -11,6 +11,8 @@ const GEMINI_ENABLED = false;
 const TRANSCRIPT_ROW_EST_PX = 30;
 const TRANSCRIPT_VIRTUAL_OVERSCAN = 14;
 const TRANSCRIPT_VIRTUAL_THRESHOLD = 140;
+/** Merge cues into this many ms per row when Transcript Window = 15 sec blocks */
+const TRANSCRIPT_MERGE_BUCKET_MS = 15000;
 /** How often we sync transcript highlight + auto-follow to the player (ms). Lower = tighter A/V sync; smooth scroll was causing multi-second lag */
 const CUE_POLL_INTERVAL_MS = 100;
 
@@ -59,7 +61,7 @@ const LOCALE_DATA = {
       sectionDensity: {balanced: 'Balanced', dense: 'Dense', spacious: 'Spacious'},
       relatedFocus: {adjacent: 'Adjacent topics', 'same-speakers': 'Same speakers', 'deeper-dive': 'Deeper dive'},
       autoFollow: {on: 'On', off: 'Off'},
-      transcriptWindow: {all: 'All cues', short: 'Compact'},
+      transcriptWindow: {all: 'All cues', short: 'Compact', blocks: '15 sec blocks'},
       titleStyle: {editorial: 'Editorial', plain: 'Plain', bold: 'Bold'},
       quoteEmphasis: {high: 'High', balanced: 'Balanced', low: 'Low'},
       mindmapDepth: {balanced: 'Balanced', deep: 'Deep', overview: 'Overview'},
@@ -75,8 +77,13 @@ const LOCALE_DATA = {
     statusLoadingGeminiAndMeta: 'Verifying Gemini API and loading video metadata…',
     statusGeminiOkLoadingTranscript: 'Gemini API OK · Loading transcript…',
     statusGeminiCheckFailed: 'Gemini API check failed',
+    statusWorkspaceLoadFailed: 'Workspace load failed',
+    statusWorkspaceStreamNoHead:
+      'Workspace stream did not include a head line — response may be empty, or HTML/JSON instead of NDJSON. Open this app from the Worker URL (Wrangler: npm run dev). Add ?workspaceDebug=1 for console details',
+    statusApiHtmlCloudflare:
+      'Cloudflare returned HTML instead of JSON — check Workers Logs, confirm /api/* routes to this Worker, then retry',
     statusApiHtmlInsteadOfJson:
-      'Got HTML instead of JSON — open this app from your Wrangler dev URL (npm run dev, e.g. http://127.0.0.1:8788). On Cloudflare, route /api/* to this Worker, not static hosting only',
+      'Got HTML instead of JSON — open this app from the URL that serves the Worker (Wrangler: npm run dev). Do not use a static-only host or wrong port; route /api/* to this Worker',
     statusLoadingTranscriptFetch: 'Loading transcript...',
     transcriptStreamingProgress: '{loaded} / {total} cues loaded',
     statusWorkspaceReady: 'Workspace ready. Streaming summary...',
@@ -156,7 +163,7 @@ const LOCALE_DATA = {
       sectionDensity: {balanced: '平衡', dense: '紧密', spacious: '舒展'},
       relatedFocus: {adjacent: '相近主题', 'same-speakers': '同一讲者', 'deeper-dive': '更深挖'},
       autoFollow: {on: '开启', off: '关闭'},
-      transcriptWindow: {all: '全部字幕', short: '紧凑'},
+      transcriptWindow: {all: '全部字幕', short: '紧凑', blocks: '15秒一段'},
       titleStyle: {editorial: '编辑感', plain: '朴素', bold: '强烈'},
       quoteEmphasis: {high: '高', balanced: '平衡', low: '低'},
       mindmapDepth: {balanced: '平衡', deep: '深入', overview: '总览'},
@@ -172,8 +179,13 @@ const LOCALE_DATA = {
     statusLoadingGeminiAndMeta: '正在验证 Gemini API 并加载视频信息…',
     statusGeminiOkLoadingTranscript: 'Gemini API 正常 · 正在加载字幕…',
     statusGeminiCheckFailed: 'Gemini API 检查失败',
+    statusWorkspaceLoadFailed: '工作台加载失败',
+    statusWorkspaceStreamNoHead:
+      '字幕流未返回 head 行 — 响应可能为空，或返回了网页/JSON 而非 NDJSON。请从 Worker 同源地址打开（Wrangler：npm run dev）。可加 ?workspaceDebug=1 查看控制台',
+    statusApiHtmlCloudflare:
+      'Cloudflare 返回了网页而非 JSON — 请查看 Workers 日志，确认 /api/* 已路由到本 Worker，然后再试',
     statusApiHtmlInsteadOfJson:
-      '收到网页而非接口数据 — 请用 Wrangler 本地地址打开（npm run dev，例如 http://127.0.0.1:8788）。部署到 Cloudflare 时请把 /api/* 指到本 Worker，不要只用静态托管',
+      '接口返回了网页而非 JSON — 请从运行 Worker 的地址打开本应用（Wrangler：npm run dev）。不要用纯静态站或错误端口；线上请把 /api/* 指到本 Worker',
     statusLoadingTranscriptFetch: '正在加载字幕...',
     transcriptStreamingProgress: '已加载 {loaded} / {total} 条字幕',
     statusWorkspaceReady: '工作台已加载，正在生成摘要...',
@@ -425,40 +437,80 @@ async function toggleLocale() {
   await loadTabData(state.activeTab);
 }
 
-async function fetchTranscriptNdjsonStream(url, signal) {
+/**
+ * Reads POST /api/workspace?stream=1 NDJSON: head includes full workspace; then cue chunks; done.
+ */
+async function consumeWorkspaceNdjsonStream(response) {
+  if (!response.body) {
+    throw new Error(t('statusWorkspaceStreamNoHead'));
+  }
   const streamT0 = typeof performance !== 'undefined' ? performance.now() : 0;
   let firstChunkLogged = false;
-  const response = await fetch('/api/transcript?stream=1', {
-    method: 'POST',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({url: url}),
-    signal: signal,
-  });
-  if (!response.ok) {
-    const errPayload = await response.json().catch(function() {
-      return {};
-    });
-    throw new Error(errPayload.error || 'Transcript load failed.');
-  }
+  let headLogged = false;
+  let headReceived = false;
+  const workspaceDebug =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('workspaceDebug') === '1';
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 
   function processLine(line) {
-    const msg = JSON.parse(line);
-    if (msg.type === 'head') {
-      state.workspace.transcript = {
-        language: msg.language || '',
-        source: msg.source || '',
-        entries: [],
-        pending: true,
-        expectedTotal: typeof msg.total === 'number' ? msg.total : 0,
+    let msg;
+    try {
+      msg = JSON.parse(line);
+    } catch (parseErr) {
+      console.error('[workspace-stream] NDJSON parse error', parseErr, 'line.slice(0,240)=', line.slice(0, 240));
+      throw parseErr;
+    }
+    if (workspaceDebug) {
+      console.log('[workspace-stream] event', msg.type, msg.type === 'head' ? {hasWorkspace: !!msg.workspace, hasWorkspaceDebug: !!msg.workspaceDebug} : {});
+    }
+    if (msg.type === 'head' && msg.workspace) {
+      const ws = msg.workspace;
+      if (!ws.transcript) {
+        ws.transcript = {
+          entries: [],
+          language: '',
+          source: '',
+          pending: true,
+        };
+      }
+      if (!Array.isArray(ws.transcript.entries)) {
+        ws.transcript.entries = [];
+      }
+      if (!ws.video || !ws.video.id) {
+        throw new Error('Workspace head is missing video metadata');
+      }
+      if (msg.workspaceDebug) {
+        console.log('[workspace] YouTube captions (server debug)', msg.workspaceDebug);
+      }
+      state.workspace = ws;
+      headReceived = true;
+      state.localized = {
+        en: createLocaleCache(),
+        zh: createLocaleCache(),
       };
+      state.selectedPerson = null;
+      state.currentCueId = null;
+      activateTab(TAB_IDS.summary, true);
+      renderWorkspaceMeta();
+      renderDetailPaneNotice();
+      mountPlayer(ws.video.id);
+      renderTranscriptList();
+      if (
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('workspacePerf') === '1' &&
+        !headLogged
+      ) {
+        headLogged = true;
+        console.info('[workspacePerf] workspace_ndjson_head_ms=' + (performance.now() - streamT0).toFixed(1));
+      }
       scheduleTranscriptStreamRender();
       return;
     }
-    if (msg.type === 'chunk' && Array.isArray(msg.entries)) {
+    if (msg.type === 'chunk' && Array.isArray(msg.entries) && state.workspace && state.workspace.transcript) {
       state.workspace.transcript.entries = state.workspace.transcript.entries.concat(msg.entries);
       if (
         !firstChunkLogged &&
@@ -472,7 +524,7 @@ async function fetchTranscriptNdjsonStream(url, signal) {
       scheduleTranscriptStreamRender();
       return;
     }
-    if (msg.type === 'done') {
+    if (msg.type === 'done' && state.workspace && state.workspace.transcript) {
       state.workspace.transcript.pending = false;
       if (state.workspace.transcript.expectedTotal !== undefined) {
         delete state.workspace.transcript.expectedTotal;
@@ -486,7 +538,7 @@ async function fetchTranscriptNdjsonStream(url, signal) {
     buffer += decoder.decode(next.value || new Uint8Array(0), {stream: !next.done});
     let idx;
     while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim();
+      const line = buffer.slice(0, idx).replace(/^\uFEFF/, '').trim();
       buffer = buffer.slice(idx + 1);
       if (line) {
         processLine(line);
@@ -496,16 +548,24 @@ async function fetchTranscriptNdjsonStream(url, signal) {
       break;
     }
   }
-  const tail = buffer.trim();
+  const tail = buffer.replace(/^\uFEFF/, '').trim();
   if (tail) {
     try {
       processLine(tail);
     } catch (err) {
-      throw new Error('Transcript stream ended before completion');
+      throw new Error('Workspace stream ended before completion');
     }
   }
 
-  if (state.workspace.transcript.pending) {
+  if (!headReceived) {
+    if (workspaceDebug) {
+      const ct = response.headers && response.headers.get ? response.headers.get('content-type') : '';
+      console.error('[workspace-stream] no head line; content-type=', ct);
+    }
+    throw new Error(t('statusWorkspaceStreamNoHead'));
+  }
+
+  if (state.workspace && state.workspace.transcript && state.workspace.transcript.pending) {
     state.workspace.transcript.pending = false;
     if (state.workspace.transcript.expectedTotal !== undefined) {
       delete state.workspace.transcript.expectedTotal;
@@ -514,7 +574,7 @@ async function fetchTranscriptNdjsonStream(url, signal) {
   }
 
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
-    const n = state.workspace.transcript.entries.length;
+    const n = state.workspace && state.workspace.transcript ? state.workspace.transcript.entries.length : 0;
     console.info('[workspacePerf] transcript_stream_total_ms=' + (performance.now() - streamT0).toFixed(1) + ' cue_count=' + n);
   }
 }
@@ -545,18 +605,31 @@ async function loadWorkspace() {
   setStatus(t('statusLoadingGeminiAndMeta'), 'loading');
 
   try {
-    const [pingRes, response] = await Promise.all([
+    const [pingRes, streamRes] = await Promise.all([
       fetch('/api/gemini/ping', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
         signal: controller.signal,
       }),
-      fetch('/api/workspace', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({url: url}),
-        signal: controller.signal,
-      }),
+      fetch(
+        '/api/workspace?stream=1'
+          + (typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).get('workspaceDebug') === '1'
+            ? '&workspaceDebug=1'
+            : ''),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(typeof window !== 'undefined' &&
+            new URLSearchParams(window.location.search).get('workspaceDebug') === '1'
+              ? {'x-workspace-debug': '1'}
+              : {}),
+          },
+          body: JSON.stringify({url: url}),
+          signal: controller.signal,
+        },
+      ),
     ]);
 
     const pingPayload = await parseApiJsonResponse(pingRes).catch(function(e) {
@@ -566,35 +639,20 @@ async function loadWorkspace() {
       throw new Error(pingPayload.error || t('statusGeminiCheckFailed'));
     }
 
-    const parseStart = typeof performance !== 'undefined' ? performance.now() : 0;
-    const payload = await parseApiJsonResponse(response);
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workspacePerf') === '1') {
-      console.info('[workspacePerf] workspace_json_parse_ms=' + (performance.now() - parseStart).toFixed(1));
-    }
-    if (!response.ok) {
-      throw new Error(payload.error || 'Workspace load failed.');
+    if (!streamRes.ok) {
+      const errPayload = await parseApiJsonResponse(streamRes).catch(function(e) {
+        return {error: e.message || 'Workspace load failed.'};
+      });
+      throw new Error(errPayload.error || 'Workspace load failed.');
     }
 
-    setStatus(t('statusGeminiOkLoadingTranscript'), 'loading');
-
-    state.workspace = payload;
-    state.localized = {
-      en: createLocaleCache(),
-      zh: createLocaleCache(),
-    };
-    state.selectedPerson = null;
-    state.currentCueId = null;
-    activateTab(TAB_IDS.summary, true);
-    renderWorkspaceMeta();
-    renderDetailPaneNotice();
-    mountPlayer(payload.video.id);
-    renderTranscriptList();
-
-    const transcriptController = new AbortController();
-    state.requests.transcriptData = transcriptController;
     setStatus(t('statusLoadingTranscriptFetch'), 'loading');
 
-    await fetchTranscriptNdjsonStream(url, transcriptController.signal);
+    await consumeWorkspaceNdjsonStream(streamRes);
+
+    if (!state.workspace || !state.workspace.transcript) {
+      throw new Error(t('statusWorkspaceStreamNoHead'));
+    }
 
     primeSourceTranscriptCache(state.workspace.transcript);
     renderWorkspaceMeta();
@@ -608,6 +666,15 @@ async function loadWorkspace() {
       setStatus('Workspace ready', 'success');
     }
   } catch (error) {
+    if (
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('workspaceDebug') === '1'
+    ) {
+      console.error('[workspace] loadWorkspace failed', error && error.message, {
+        hasWorkspace: Boolean(state.workspace),
+        hasTranscript: Boolean(state.workspace && state.workspace.transcript),
+      });
+    }
     if (error.name !== 'AbortError') {
       if (state.workspace && state.workspace.transcript && state.workspace.transcript.pending) {
         state.workspace = null;
@@ -622,8 +689,8 @@ async function loadWorkspace() {
         refs.playerPlaceholder.hidden = false;
         refs.playerStage.hidden = true;
       }
-      setStatus(error.message || 'Workspace load failed.', 'error');
-      refs.analysisMain.innerHTML = '<div class="error-state">' + escapeHtml(error.message || 'Workspace load failed.') + '</div>';
+      setStatus(t('statusWorkspaceLoadFailed'), 'error');
+      refs.analysisMain.innerHTML = '<div class="error-state">' + escapeHtml(error.message || t('statusWorkspaceLoadFailed')) + '</div>';
     }
   } finally {
     refs.loadButton.disabled = false;
@@ -662,8 +729,8 @@ async function runSummaryStream() {
     });
 
     if (!response.ok || !response.body) {
-      const payload = await response.json().catch(function() {
-        return {};
+      const payload = await parseApiJsonResponse(response).catch(function(e) {
+        return {error: e.message || 'Summary stream failed.'};
       });
       throw new Error(payload.error || 'Summary stream failed.');
     }
@@ -776,7 +843,7 @@ async function loadTabData(tabId) {
       }),
       signal: controller.signal,
     });
-    const payload = await response.json();
+    const payload = await parseApiJsonResponse(response);
     if (!response.ok) {
       throw new Error(payload.error || 'Tab load failed.');
     }
@@ -844,7 +911,7 @@ async function loadPersonDetail(personName) {
       }),
       signal: controller.signal,
     });
-    const payload = await response.json();
+    const payload = await parseApiJsonResponse(response);
     if (!response.ok) {
       throw new Error(payload.error || 'Person detail failed.');
     }
@@ -873,7 +940,11 @@ async function ensureTranscriptForLocale(locale) {
     return;
   }
 
-  if (state.workspace.transcript && state.workspace.transcript.pending) {
+  if (!state.workspace.transcript) {
+    return;
+  }
+
+  if (state.workspace.transcript.pending) {
     return;
   }
 
@@ -906,6 +977,12 @@ function renderWorkspaceMeta() {
     return;
   }
 
+  if (!state.workspace.transcript) {
+    refs.videoSubtitle.textContent = state.workspace.video ? state.workspace.video.title : t('videoSubtitleInitial');
+    refs.transcriptSubtitle.textContent = t('transcriptSubtitleInitial');
+    return;
+  }
+
   const video = state.workspace.video;
   const localeState = getLocaleState();
   const transcriptEntries = getCurrentTranscriptEntries();
@@ -933,7 +1010,7 @@ function renderWorkspaceMeta() {
   refs.videoBadges.innerHTML = [
     createPill(video.channelTitle || t('unknownChannel')),
     createPill(formatLength(video.lengthSeconds)),
-    createPill((state.workspace.transcript.language || t('autoLanguage')) + ' · ' + transcriptTag),
+    createPill(((state.workspace.transcript && state.workspace.transcript.language) || t('autoLanguage')) + ' · ' + transcriptTag),
   ].join('');
   refs.videoMeta.innerHTML =
     '<div class="video-meta-bar"><span class="video-meta-channel">' + escapeHtml(video.channelTitle || t('unknownChannel')) +
@@ -963,7 +1040,7 @@ function onTranscriptPanelScroll() {
       return;
     }
     const entries = getVisibleTranscriptEntries();
-    if (entries.length < TRANSCRIPT_VIRTUAL_THRESHOLD || refs.transcriptWindow.value !== 'all') {
+    if (entries.length < TRANSCRIPT_VIRTUAL_THRESHOLD || !transcriptViewUsesVirtualList()) {
       return;
     }
     renderTranscriptList();
@@ -975,8 +1052,16 @@ function onTranscriptCueClick(ev) {
   if (!btn || !state.workspace) {
     return;
   }
+  const cueId = btn.dataset.cueId || '';
+  if (cueId.indexOf('tb-') === 0) {
+    const bi = Number(cueId.slice(3));
+    if (!Number.isNaN(bi)) {
+      seekToTimestamp(bi * TRANSCRIPT_MERGE_BUCKET_MS);
+    }
+    return;
+  }
   const cue = state.workspace.transcript.entries.find(function(entry) {
-    return entry.id === btn.dataset.cueId;
+    return entry.id === cueId;
   });
   if (cue) {
     seekToTimestamp(cue.startMs);
@@ -1011,7 +1096,7 @@ function renderTranscriptList() {
 
   const scrollEl = refs.transcriptScroll;
   const useVirtual = Boolean(scrollEl) && entries.length >= TRANSCRIPT_VIRTUAL_THRESHOLD
-    && refs.transcriptWindow.value === 'all';
+    && transcriptViewUsesVirtualList();
 
   /* Slice math is mirrored in src/lib/transcript-virtual-window.js (computeTranscriptVirtualWindow) for tests. */
   if (useVirtual) {
@@ -1059,8 +1144,59 @@ function renderTranscriptList() {
   }).join('');
 }
 
+/** @see ../lib/transcript-merge-buckets.js — keep in sync */
+function mergeTranscriptEntriesInto15SecBlocks(entries) {
+  if (!Array.isArray(entries) || !entries.length) {
+    return [];
+  }
+  const ms = TRANSCRIPT_MERGE_BUCKET_MS;
+  const map = new Map();
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const start = Number(entry.startMs) || 0;
+    const bi = Math.floor(start / ms);
+    if (!map.has(bi)) {
+      map.set(bi, {
+        id: 'tb-' + bi,
+        startMs: bi * ms,
+        durationMs: ms,
+        parts: [],
+      });
+    }
+    const g = map.get(bi);
+    const t = String(entry.text || '').trim();
+    if (t) {
+      g.parts.push(t);
+    }
+  }
+  return Array.from(map.keys())
+    .sort(function(a, b) {
+      return a - b;
+    })
+    .map(function(bi) {
+      const g = map.get(bi);
+      return {
+        id: g.id,
+        startMs: g.startMs,
+        durationMs: g.durationMs,
+        text: g.parts.join(' ').replace(/\s+/g, ' ').trim(),
+      };
+    })
+    .filter(function(row) {
+      return row.text.length > 0;
+    });
+}
+
+function transcriptViewUsesVirtualList() {
+  const v = refs.transcriptWindow.value;
+  return v === 'all' || v === 'blocks';
+}
+
 function getVisibleTranscriptEntries() {
-  const entries = getCurrentTranscriptEntries();
+  let entries = getCurrentTranscriptEntries();
+  if (refs.transcriptWindow.value === 'blocks') {
+    entries = mergeTranscriptEntriesInto15SecBlocks(entries);
+  }
   if (refs.transcriptWindow.value !== 'short' || !state.currentCueId) {
     return entries;
   }
@@ -1288,6 +1424,7 @@ function mountPlayer(videoId) {
       autoplay: 0,
       playsinline: 1,
       rel: 0,
+      origin: window.location.origin,
     },
     events: {
       onReady: startCuePolling,
@@ -1314,7 +1451,14 @@ function startCuePolling() {
         break;
       }
     }
-    const nextCueId = active ? active.id : null;
+    let nextCueId = null;
+    if (active) {
+      if (refs.transcriptWindow.value === 'blocks') {
+        nextCueId = 'tb-' + String(Math.floor(active.startMs / TRANSCRIPT_MERGE_BUCKET_MS));
+      } else {
+        nextCueId = active.id;
+      }
+    }
     if (nextCueId && nextCueId !== state.currentCueId) {
       state.currentCueId = nextCueId;
       if (refs.autoFollow.value === 'on' && refs.transcriptScroll) {
@@ -1324,7 +1468,7 @@ function startCuePolling() {
         });
         if (idx !== -1) {
           const el = refs.transcriptScroll;
-          const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && refs.transcriptWindow.value === 'all';
+          const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && transcriptViewUsesVirtualList();
           if (useVirtual) {
             el.scrollTop = Math.max(0, idx * TRANSCRIPT_ROW_EST_PX - el.clientHeight / 2);
           }
@@ -1333,7 +1477,7 @@ function startCuePolling() {
       renderTranscriptList();
       if (refs.autoFollow.value === 'on') {
         const vis = getVisibleTranscriptEntries();
-        const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && refs.transcriptWindow.value === 'all';
+        const useVirtual = vis.length >= TRANSCRIPT_VIRTUAL_THRESHOLD && transcriptViewUsesVirtualList();
         if (!useVirtual) {
           const target = refs.transcriptList.querySelector('[data-cue-id="' + CSS.escape(nextCueId) + '"]');
           if (target) {
@@ -1539,7 +1683,7 @@ function getLocaleState(locale) {
 }
 
 function getCurrentTranscriptEntries() {
-  if (!state.workspace) {
+  if (!state.workspace || !state.workspace.transcript) {
     return [];
   }
   const localeState = getLocaleState();
@@ -1553,7 +1697,7 @@ function getCurrentTranscriptEntries() {
 }
 
 function getPromptTranscriptEntries(locale) {
-  if (!state.workspace) {
+  if (!state.workspace || !state.workspace.transcript) {
     return [];
   }
   const localeState = getLocaleState(locale);
@@ -1627,7 +1771,7 @@ async function requestTranscriptTranslation(locale, localeState) {
       }),
       signal: controller.signal,
     });
-    const payload = await response.json();
+    const payload = await parseApiJsonResponse(response);
     if (!response.ok) {
       throw new Error(payload.error || 'Transcript translation failed.');
     }
@@ -1666,19 +1810,61 @@ function t(key) {
 }
 
 /**
- * Reads JSON from a fetch Response. If the body is HTML (SPA fallback or wrong host), throws a clear error.
+ * HTML bodies from /api usually mean wrong origin (SPA), or Cloudflare serving an error page when the Worker fails.
+ * @param {string} text
+ * @returns {string} Localized message for throw
+ */
+function describeHtmlApiBody(text) {
+  const sample = text.slice(0, 20000).toLowerCase();
+  const looksCloudflare =
+    sample.includes('cloudflare') ||
+    sample.includes('cf-ray') ||
+    sample.includes('cdn-cgi/') ||
+    sample.includes('cf-error');
+  if (looksCloudflare) {
+    return t('statusApiHtmlCloudflare');
+  }
+  return t('statusApiHtmlInsteadOfJson');
+}
+
+/**
+ * Reads JSON from a fetch Response. If the body is HTML (SPA fallback, wrong host, or gateway HTML error), throws a clear error.
+ * Uses Content-Type and leading brace or bracket (ASCII 123 or 91) so valid JSON is never mistaken for HTML (some proxies alter bodies slightly).
  * @param {Response} response
  * @returns {Promise<object>}
  */
 function parseApiJsonResponse(response) {
   return response.text().then(function(text) {
-    const trimmed = text.trim();
+    let trimmed = text.trim();
+    if (trimmed.charCodeAt(0) === 0xfeff) {
+      trimmed = trimmed.slice(1).trim();
+    }
     if (!trimmed.length) {
       throw new Error('Empty API response');
     }
-    if (trimmed.charCodeAt(0) === 60) {
-      throw new Error(t('statusApiHtmlInsteadOfJson'));
+
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error('Invalid JSON from API: ' + (err.message || String(err)));
+      }
     }
+
+    const first = trimmed.charCodeAt(0);
+    if (first === 123 || first === 91) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error('Invalid JSON: ' + (err.message || String(err)));
+      }
+    }
+
+    if (first === 60) {
+      throw new Error(describeHtmlApiBody(trimmed));
+    }
+
     try {
       return JSON.parse(trimmed);
     } catch (err) {

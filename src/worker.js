@@ -1,8 +1,7 @@
-import {streamGeminiText, generateGeminiJson, pingGemini} from './lib/gemini.js';
+import {generateLlmJson, pingLlm, streamLlmText} from './lib/llm.js';
 import {buildMindmapPrompt, buildSummaryPrompt} from './lib/prompt.js';
 import {buildSpeakerTranscriptPrompt} from './lib/speaker-transcript.js';
 import {
-  DEFAULT_GEMINI_MODEL,
   makeTranscriptApiPayload,
   makeWorkspacePayload,
   normalizeGenerationOptions,
@@ -13,7 +12,7 @@ import {buildRelatedVideosTab} from './lib/recommendations.js';
 import {buildPeopleTab, buildPersonDetail} from './lib/people.js';
 import {createRuntimeFetch} from './lib/runtime-fetch.js';
 import {translateTranscript} from './lib/transcript.js';
-import {fetchTranscriptPayload, fetchWorkspaceMetadata} from './lib/youtube.js';
+import {fetchTranscriptPayload, fetchWorkspaceData, fetchWorkspaceMetadata} from './lib/youtube.js';
 import {LOGO_ASSET_PATH, LOGO_PNG_BYTES} from './ui/brand.js';
 import {SIMPLIFIED_VERSION_CLIENT_SOURCE} from './ui/simplified-version-client.js';
 import {renderSimplifiedVersionTranscriptPage} from './ui/simplified-version-page.js';
@@ -26,10 +25,52 @@ const CHROME_DEVTOOLS_WELL_KNOWN_PATH = '/.well-known/appspecific/com.chrome.dev
 
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=3600';
 
+/** Query param names whose values must never appear in logs. */
+const REDACT_QUERY_KEYS = new Set([
+  'key',
+  'token',
+  'secret',
+  'password',
+  'access_token',
+  'refresh_token',
+  'authorization',
+  'api_key',
+  'apikey',
+  'client_secret',
+]);
+
+/**
+ * Logs incoming API traffic without secrets (no env vars, headers, or sensitive query values).
+ * @param {Request} request
+ * @param {URL} url
+ */
+function logIncomingApiRequest(request, url) {
+  const search = redactSearchForLog(url.search);
+  console.log('[api]', request.method, url.pathname + search);
+}
+
+function redactSearchForLog(search) {
+  if (!search || search === '?') {
+    return '';
+  }
+  const raw = search.startsWith('?') ? search.slice(1) : search;
+  const params = new URLSearchParams(raw);
+  const out = new URLSearchParams();
+  for (const [key, value] of params.entries()) {
+    const lower = key.toLowerCase();
+    out.set(key, REDACT_QUERY_KEYS.has(lower) ? '[redacted]' : value);
+  }
+  const s = out.toString();
+  return s ? `?${s}` : '';
+}
+
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
+      if (url.pathname.startsWith('/api/')) {
+        logIncomingApiRequest(request, url);
+      }
       const runtimeFetch = createRuntimeFetch({requestUrl: request.url});
 
       if (request.method === 'GET' && url.pathname === CHROME_DEVTOOLS_WELL_KNOWN_PATH) {
@@ -71,11 +112,11 @@ export default {
       }
 
       if (request.method === 'POST' && url.pathname === '/api/workspace') {
-        return handleWorkspaceRequest(request, runtimeFetch);
+        return handleWorkspaceRequest(request, runtimeFetch, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/transcript') {
-        return handleTranscriptRequest(request, runtimeFetch);
+        return handleTranscriptRequest(request, runtimeFetch, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/summary/stream') {
@@ -114,7 +155,17 @@ export default {
 };
 
 async function handleGeminiPing(_request, env, fetchFn) {
-  if (!env.GEMINI_API_KEY) {
+  const wantsLocal = String(env.AI_ENV || '')
+    .toLowerCase()
+    .trim() === 'local';
+  if (wantsLocal && !env.SILICONFLOW_API_KEY) {
+    return jsonResponse({
+      ok: false,
+      error:
+        'AI_ENV is local but SILICONFLOW_API_KEY is not set. Add it in config/gemini.local.json / .dev.vars.',
+    });
+  }
+  if (wantsLocal === false && !env.GEMINI_API_KEY) {
     return jsonResponse({
       ok: false,
       error: 'GEMINI_API_KEY is not configured on this Worker. Add it in the Cloudflare dashboard or .dev.vars for local dev.',
@@ -122,32 +173,42 @@ async function handleGeminiPing(_request, env, fetchFn) {
   }
 
   try {
-    const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-    await pingGemini({
-      apiKey: env.GEMINI_API_KEY,
-      model,
-      fetchFn,
-    });
-    return jsonResponse({ok: true, model});
+    const out = await pingLlm(env, fetchFn);
+    return jsonResponse({ok: true, model: out.model, provider: out.provider});
   } catch (error) {
     return jsonResponse({
       ok: false,
-      error: error.message || 'Gemini ping failed.',
+      error: error.message || 'LLM ping failed.',
     });
   }
 }
 
-async function handleWorkspaceRequest(request, fetchFn) {
+function isWorkspaceDebugEnabled(env, requestUrl, headers) {
+  const fromQuery = requestUrl.searchParams.get('workspaceDebug') === '1';
+  const fromHeader = headers.get('x-workspace-debug') === '1';
+  const fromEnv = String(env.DEBUG_WORKSPACE || '')
+    .toLowerCase()
+    .trim() === '1';
+  return fromQuery || fromHeader || fromEnv;
+}
+
+async function handleWorkspaceRequest(request, fetchFn, env) {
+  const requestUrl = new URL(request.url);
   const body = await readJsonBody(request);
   if (!body.url) {
     return jsonResponse({error: 'A YouTube URL is required.'}, 400);
   }
 
-  const workspace = await fetchWorkspaceMetadata(body.url, fetchFn);
+  if (requestUrl.searchParams.get('stream') === '1') {
+    const wantWorkspaceDebug = isWorkspaceDebugEnabled(env, requestUrl, request.headers);
+    return streamWorkspaceNdjson(body.url, fetchFn, env, {wantWorkspaceDebug});
+  }
+
+  const workspace = await fetchWorkspaceMetadata(body.url, fetchFn, env);
   return jsonResponse(makeWorkspacePayload(workspace));
 }
 
-async function handleTranscriptRequest(request, fetchFn) {
+async function handleTranscriptRequest(request, fetchFn, env) {
   const requestUrl = new URL(request.url);
   const stream = requestUrl.searchParams.get('stream') === '1';
   const body = await readJsonBody(request);
@@ -156,33 +217,125 @@ async function handleTranscriptRequest(request, fetchFn) {
   }
 
   if (stream) {
-    return streamTranscriptNdjson(body.url, fetchFn);
+    return streamTranscriptNdjson(body.url, fetchFn, env);
   }
 
-  const transcript = await fetchTranscriptPayload(body.url, fetchFn);
+  const transcript = await fetchTranscriptPayload(body.url, fetchFn, env);
   return jsonResponse(makeTranscriptApiPayload(transcript));
 }
 
 /**
- * Streams normalized cues as NDJSON: head line, then one JSON object per ≤100 cues, then done.
- * Smaller per-line JSON.parse on the client than one giant payload.
+ * One YouTube watch fetch, then NDJSON: head line with full workspace JSON, cue chunks, done.
  */
-function streamTranscriptNdjson(url, fetchFn) {
+function streamWorkspaceNdjson(url, fetchFn, env, options = {}) {
+  const encoder = new TextEncoder();
+  const chunkSize = TRANSCRIPT_NDJSON_CHUNK_SIZE;
+  const wantWorkspaceDebug = Boolean(options.wantWorkspaceDebug);
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] start', {url});
+        }
+        const data = await fetchWorkspaceData(url, fetchFn, env);
+        if (!data || !data.video || !data.transcript) {
+          throw new Error('Workspace response missing video or transcript.');
+        }
+        const workspaceDebug = data._workspaceDebug;
+        if (data._workspaceDebug) {
+          delete data._workspaceDebug;
+        }
+        const entries = normalizeTranscriptEntries(data.transcript.entries || []);
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] fetched workspace', {
+            videoId: data.video && data.video.id,
+            transcriptLanguage: data.transcript.language,
+            transcriptSource: data.transcript.source,
+            cueCount: entries.length,
+          });
+        }
+        const workspacePayload = makeWorkspacePayload({
+          video: data.video,
+          transcript: {
+            language: data.transcript.language || '',
+            source: data.transcript.source || '',
+            entries: [],
+            pending: true,
+          },
+        });
+        workspacePayload.transcript.expectedTotal = entries.length;
+        workspacePayload.transcript.source = data.transcript.source || '';
+        workspacePayload.transcript.language = data.transcript.language || '';
+
+        const headLine = {
+          type: 'head',
+          workspace: workspacePayload,
+        };
+        if (wantWorkspaceDebug && workspaceDebug) {
+          headLine.workspaceDebug = workspaceDebug;
+        }
+
+        controller.enqueue(encoder.encode(`${JSON.stringify(headLine)}\n`));
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] head line enqueued');
+        }
+
+        await new Promise(function(resolve) {
+          setTimeout(resolve, 0);
+        });
+
+        for (let i = 0; i < entries.length; i += chunkSize) {
+          const slice = entries.slice(i, i + chunkSize);
+          controller.enqueue(
+            encoder.encode(`${JSON.stringify({type: 'chunk', entries: slice})}\n`),
+          );
+        }
+
+        controller.enqueue(encoder.encode(`${JSON.stringify({type: 'done'})}\n`));
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] done line enqueued');
+        }
+        controller.close();
+      } catch (error) {
+        if (wantWorkspaceDebug) {
+          console.error('[workspace-stream] error', error && error.message, error && error.stack);
+        }
+        controller.error(error);
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-cache',
+    },
+  });
+}
+
+/**
+ * Legacy NDJSON for POST /api/transcript?stream=1 — same single watch fetch as workspace stream.
+ */
+function streamTranscriptNdjson(url, fetchFn, env) {
   const encoder = new TextEncoder();
   const chunkSize = TRANSCRIPT_NDJSON_CHUNK_SIZE;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const transcript = await fetchTranscriptPayload(url, fetchFn);
-        const entries = normalizeTranscriptEntries(transcript.entries || []);
+        const data = await fetchWorkspaceData(url, fetchFn, env);
+        if (!data || !data.video || !data.transcript) {
+          throw new Error('Workspace response missing video or transcript.');
+        }
+        const entries = normalizeTranscriptEntries(data.transcript.entries || []);
 
         controller.enqueue(
           encoder.encode(
             `${JSON.stringify({
               type: 'head',
-              language: transcript.language || '',
-              source: transcript.source || '',
+              language: data.transcript.language || '',
+              source: data.transcript.source || '',
               total: entries.length,
             })}\n`,
           ),
@@ -242,9 +395,7 @@ async function handleSpeakerTranscriptStream(request, env, fetchFn) {
       const send = createSseSender(controller);
       try {
         send('status', {message: 'Connected to Gemini speaker transcript stream.', kind: 'loading'});
-        await streamGeminiText({
-          apiKey: env.GEMINI_API_KEY,
-          model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+        await streamLlmText(env, {
           prompt,
           fetchFn,
           onTextChunk(text) {
@@ -286,9 +437,7 @@ async function handleSummaryStream(request, env, fetchFn) {
       const send = createSseSender(controller);
       try {
         send('status', {message: 'Connected to Gemini summary stream.', kind: 'loading'});
-        await streamGeminiText({
-          apiKey: env.GEMINI_API_KEY,
-          model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+        await streamLlmText(env, {
           prompt,
           fetchFn,
           onTextChunk(text) {
@@ -315,9 +464,7 @@ async function handleSummaryStream(request, env, fetchFn) {
 
 async function handleMindmapTab(request, env, fetchFn) {
   const body = await readJsonBody(request);
-  const result = await generateGeminiJson({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+  const result = await generateLlmJson(env, {
     prompt: buildMindmapPrompt({
       video: body.video,
       transcriptEntries: body.transcript?.entries || [],
@@ -331,8 +478,7 @@ async function handleMindmapTab(request, env, fetchFn) {
 async function handleRelatedTab(request, env, fetchFn) {
   const body = await readJsonBody(request);
   const result = await buildRelatedVideosTab({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     video: body.video,
     transcriptEntries: body.transcript?.entries || [],
     options: normalizeGenerationOptions(body.options),
@@ -344,8 +490,7 @@ async function handleRelatedTab(request, env, fetchFn) {
 async function handlePeopleTab(request, env, fetchFn) {
   const body = await readJsonBody(request);
   const result = await buildPeopleTab({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     video: body.video,
     transcriptEntries: body.transcript?.entries || [],
     options: normalizeGenerationOptions(body.options),
@@ -360,8 +505,7 @@ async function handlePersonDetailRequest(request, env, fetchFn) {
     return jsonResponse({error: 'Person name and video metadata are required.'}, 400);
   }
   const result = await buildPersonDetail({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     personName: body.personName,
     video: body.video,
     transcriptEntries: body.transcript?.entries || [],
@@ -379,8 +523,7 @@ async function handleTranscriptTranslationRequest(request, env, fetchFn) {
 
   const options = normalizeGenerationOptions(body.options);
   const result = await translateTranscript({
-    apiKey: env.GEMINI_API_KEY,
-    model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+    env,
     transcriptEntries: body.transcript.entries,
     targetLanguage: options.language,
     fetchFn,

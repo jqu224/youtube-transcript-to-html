@@ -1,4 +1,10 @@
 import {normalizeTranscriptEntries} from './render-model.js';
+import {
+  fetchTranscriptPayloadViaYoutubeApi,
+  fetchWorkspaceDataViaYoutubeApi,
+  fetchWorkspaceMetadataViaYoutubeApi,
+  isYoutubeDataApiConfigured,
+} from './youtube-data-api.js';
 
 const WATCH_BASE_URL = 'https://www.youtube.com/watch?v=';
 const SEARCH_BASE_URL = 'https://www.youtube.com/results?search_query=';
@@ -45,8 +51,16 @@ export function extractVideoId(input) {
   throw new Error('Could not find a valid YouTube video ID.');
 }
 
-export function buildEmbedUrl(videoId) {
-  return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=https://example.com`;
+/**
+ * @param {string} videoId
+ * @param {string} [pageOrigin] Parent page origin for IFrame API postMessage; omit when unknown (e.g. server metadata)
+ */
+export function buildEmbedUrl(videoId, pageOrigin) {
+  let url = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1`;
+  if (pageOrigin && typeof pageOrigin === 'string' && pageOrigin.trim()) {
+    url += `&origin=${encodeURIComponent(pageOrigin.trim())}`;
+  }
+  return url;
 }
 
 async function loadWatchPageAndPlayerResponse(videoId, fetchFn) {
@@ -66,8 +80,16 @@ async function loadWatchPageAndPlayerResponse(videoId, fetchFn) {
  * One watch-page fetch: video metadata + caption language hint only (no timedtext download).
  * Transcript cues load via {@link fetchTranscriptPayload}.
  */
-export async function fetchWorkspaceMetadata(input, fetchFn = fetch) {
+/**
+ * @param {string} input
+ * @param {typeof fetch} [fetchFn]
+ * @param {Record<string, string | undefined>} [env] Pass Worker env; when `YOUTUBE_KEY` + `YOUTUBE_ACCESS_TOKEN` are set, uses YouTube Data API (no watch-page scrape).
+ */
+export async function fetchWorkspaceMetadata(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
+  if (env && isYoutubeDataApiConfigured(env)) {
+    return fetchWorkspaceMetadataViaYoutubeApi(videoId, env, fetchFn);
+  }
   const {playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
   const tracks = extractCaptionTracks(playerResponse);
   if (!tracks.length) {
@@ -88,8 +110,11 @@ export async function fetchWorkspaceMetadata(input, fetchFn = fetch) {
 /**
  * Fetches caption JSON (and may re-fetch the watch page). Used by POST /api/transcript.
  */
-export async function fetchTranscriptPayload(input, fetchFn = fetch) {
+export async function fetchTranscriptPayload(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
+  if (env && isYoutubeDataApiConfigured(env)) {
+    return fetchTranscriptPayloadViaYoutubeApi(videoId, env, fetchFn);
+  }
   const {videoPage, playerResponse} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
   return fetchTranscriptFromPage({
     videoId,
@@ -99,9 +124,12 @@ export async function fetchTranscriptPayload(input, fetchFn = fetch) {
   });
 }
 
-/** Single request: metadata + full transcript (one watch-page fetch). */
-export async function fetchWorkspaceData(input, fetchFn = fetch) {
+/** Single request: metadata + full transcript (one watch-page fetch, or Data API when configured). */
+export async function fetchWorkspaceData(input, fetchFn = fetch, env) {
   const videoId = extractVideoId(input);
+  if (env && isYoutubeDataApiConfigured(env)) {
+    return fetchWorkspaceDataViaYoutubeApi(videoId, env, fetchFn);
+  }
   const {videoPage, playerResponse, video} = await loadWatchPageAndPlayerResponse(videoId, fetchFn);
   const transcript = await fetchTranscriptFromPage({
     videoId,
@@ -109,7 +137,6 @@ export async function fetchWorkspaceData(input, fetchFn = fetch) {
     playerResponse,
     fetchFn,
   });
-
   return {
     video,
     transcript,
@@ -299,15 +326,71 @@ function appendJson3Format(baseUrl) {
   return url.toString();
 }
 
+/** YouTube often returns 429 for datacenter / shared egress IPs; retry brief outages. */
+const WATCH_PAGE_RETRYABLE_STATUSES = new Set([429, 503]);
+const WATCH_PAGE_MAX_ATTEMPTS = 4;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * @param {Response} response
+ * @returns {number | null} Milliseconds to wait, capped for Workers CPU bounds
+ */
+function parseRetryAfterMs(response) {
+  const raw = response.headers.get('retry-after');
+  if (!raw) {
+    return null;
+  }
+  const seconds = Number(raw);
+  if (!Number.isNaN(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, 120_000);
+  }
+  const when = Date.parse(raw);
+  if (!Number.isNaN(when)) {
+    const delta = when - Date.now();
+    return delta > 0 ? Math.min(delta, 120_000) : null;
+  }
+  return null;
+}
+
+function watchPageError(status) {
+  if (status === 429) {
+    return new Error(
+      'YouTube rate-limited this request (429). Wait a minute and try again, or open the video in your browser once',
+    );
+  }
+  return new Error(`Failed to fetch the YouTube watch page (${status}).`);
+}
+
 async function fetchYouTubeWatchPage(videoId, fetchFn) {
   const watchUrl = `${WATCH_BASE_URL}${videoId}&hl=en&persist_hl=1&has_verified=1&bpctr=9999999999`;
-  const response = await fetchFn(watchUrl, {
-    headers: defaultYoutubeHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch the YouTube watch page (${response.status}).`);
+  let lastStatus = 0;
+
+  for (let attempt = 0; attempt < WATCH_PAGE_MAX_ATTEMPTS; attempt += 1) {
+    const response = await fetchFn(watchUrl, {
+      headers: defaultYoutubeHeaders(),
+    });
+    lastStatus = response.status;
+
+    if (response.ok) {
+      return response.text();
+    }
+
+    const retryable = WATCH_PAGE_RETRYABLE_STATUSES.has(response.status);
+    const attemptsLeft = attempt < WATCH_PAGE_MAX_ATTEMPTS - 1;
+    if (!retryable || !attemptsLeft) {
+      throw watchPageError(response.status);
+    }
+
+    const fromHeader = parseRetryAfterMs(response);
+    const backoffMs =
+      fromHeader ?? Math.min(1000 * 2 ** attempt + Math.floor(Math.random() * 500), 12_000);
+    await sleep(backoffMs);
   }
-  return response.text();
+
+  throw watchPageError(lastStatus);
 }
 
 function defaultYoutubeHeaders() {

@@ -57,6 +57,18 @@ export function loadGeminiLocalJson(root = repoRoot) {
     if (parsed.GEMINI_MODEL != null && String(parsed.GEMINI_MODEL).trim()) {
       out.GEMINI_MODEL = String(parsed.GEMINI_MODEL).trim();
     }
+    if (parsed.AI_ENV != null && String(parsed.AI_ENV).trim()) {
+      out.AI_ENV = String(parsed.AI_ENV).trim();
+    }
+    if (parsed.SILICONFLOW_API_KEY != null && String(parsed.SILICONFLOW_API_KEY).trim()) {
+      out.SILICONFLOW_API_KEY = String(parsed.SILICONFLOW_API_KEY).trim();
+    }
+    if (parsed.SILICONFLOW_MODEL != null && String(parsed.SILICONFLOW_MODEL).trim()) {
+      out.SILICONFLOW_MODEL = String(parsed.SILICONFLOW_MODEL).trim();
+    }
+    if (parsed.SILICONFLOW_MESSAGES_URL != null && String(parsed.SILICONFLOW_MESSAGES_URL).trim()) {
+      out.SILICONFLOW_MESSAGES_URL = String(parsed.SILICONFLOW_MESSAGES_URL).trim();
+    }
     return out;
   } catch {
     return {};
