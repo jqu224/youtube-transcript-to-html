@@ -59,6 +59,7 @@ export function renderAppPage() {
               id="video-url"
               name="video-url"
               type="url"
+              value="https://www.youtube.com/watch?v=xRh2sVcNXQ8"
               placeholder="https://www.youtube.com/watch?v=xRh2sVcNXQ8"
               spellcheck="false"
             >

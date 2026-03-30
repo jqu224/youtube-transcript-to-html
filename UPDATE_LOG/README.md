@@ -5,21 +5,18 @@ This folder keeps short, GitHub-renderable records of meaningful repo work by LL
 ## Repo Status
 
 - **Latest entry**: [2026-03-30 - workspace layout and transcript virtualization](2026-03-30_summary.md)
-- **Current branch focus**: recover workspace loading, keep the live player embedded and syncable, and stabilize local transcript extraction
+- **Current branch focus**: minimal core refactor for transcript fetch plus Gemini summary generation
 - **Local runtime status**:
-  - Browser tab branding is wired through the app shell
-  - Workspace loading now restores transcript data locally through the dev fetch proxy plus transcript helper
-  - The `Live Video` mount now waits for the real YouTube API instead of dropping into the non-syncable iframe fallback
-  - `Related Videos` still works locally through its fallback recommendation path
-  - `Summary`, `Mindmap`, `People`, and transcript translation still need local `.dev.vars` with `GEMINI_API_KEY`
+  - Worker serves a minimal UI shell and static assets
+  - `POST /api/transcript` and `POST /api/summary` are implemented
+  - Browser `Load Workspace` now calls both APIs and renders summary HTML
+  - Additional tabs/features remain deferred
 
 ## Current Todo
 
-- Unhide **Detail Pane** (`#detail-pane-section` in [`src/ui/page.js`](src/ui/page.js)) when the sidebar should ship again
-- Unhide **Generation Controls** (`#generation-controls-section` in [`src/ui/page.js`](src/ui/page.js)) when the sidebar should ship again
-- Add local `.dev.vars` with `GEMINI_API_KEY` and re-verify `Summary`, `Mindmap`, `People`, and transcript translation
-- Browser-check that transcript auto-follow rolls against real playback inside `Live Video`
-- Watch first-load latency on local transcript recovery and trim it if it becomes a recurring pain point
+- Add integration tests that mock/verify live `/api/transcript` and `/api/summary` success payloads
+- Add summary HTML sanitization strategy if trusted-model-only assumptions change
+- Reintroduce advanced features (streaming, mindmap, people, related videos) behind separate plans/PRs
 
 ## Conventions
 
