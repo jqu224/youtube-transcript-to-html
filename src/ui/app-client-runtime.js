@@ -39,12 +39,319 @@ export function bootstrapAppClient() {
   var youtubeOAuthToken = '';
   var youtubeOAuthTokenExpiresAt = 0;
   var youtubeTokenClient = null;
+  var I18N = {
+    en: {
+      localeToggleText: 'EN / 中文',
+      appTitle: 'YouTube AI Workspace',
+      ariaToggleTheme: 'Toggle color theme',
+      ariaSwitchLanguage: 'Switch language',
+      ariaToggleUrlControls: 'Toggle URL controls',
+      ariaWorkspaceTabs: 'Workspace tabs',
+      metaDescription: 'Live YouTube transcript workspace with streamed Chinese AI summary, mindmap, related videos, and people tabs',
+      heroWordmark: '/ YouTube Transcript To AI Notes /',
+      labelVideoUrl: 'YouTube URL',
+      placeholderVideoUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+      buttonAuthorizeYouTube: 'Authorize YouTube',
+      buttonLoadWorkspace: 'Load Workspace',
+      titleLiveVideo: 'Live Video',
+      subtitleLoadVideoStartWorkspace: 'Load a video to start the workspace',
+      placeholderPasteCaptionedVideo: 'Paste a captioned YouTube video',
+      placeholderPlayerTranscriptTabsPopulate: 'The player, transcript, and AI tabs will populate together',
+      titleLiveTranscript: 'Live Transcript',
+      subtitleTranscriptCuesAppear: 'Transcript cues will appear here',
+      labelAutoFollow: 'Auto Follow',
+      optionOn: 'On',
+      optionOff: 'Off',
+      labelTranscriptWindow: 'Transcript Window',
+      optionAllCues: 'All cues',
+      optionSecBlocks: '15 sec blocks',
+      optionSmartSlices: 'Smart slices',
+      emptyTranscriptClickableAfterLoad: 'Transcript cues will become clickable once the workspace is loaded',
+      titleAiWorkspace: 'AI Workspace',
+      subtitleSmartnoteDefaultAiSummaryAvailable: 'Smartnote is the default tab and AI Summary is also available',
+      tabSmartnote: 'Smartnote',
+      tabSummary: 'AI Summary',
+      tabMindmap: 'Mindmap',
+      tabRelated: 'Related Videos',
+      tabPeople: 'People',
+      statusPrefixError: '<strong>Error</strong> ',
+      statusPrefixReady: '<strong>Ready</strong> ',
+      statusPrefixWorking: '<strong>Working</strong> ',
+      statusYouTubeAuthReady: 'YouTube authorization ready',
+      statusYouTubeAuthFailed: 'YouTube authorization failed',
+      statusPasteUrlFirst: 'Paste a YouTube URL first',
+      statusInvalidVideoId: 'Could not extract a valid YouTube video ID',
+      statusFetchingTranscript: 'Fetching transcript',
+      statusLoadedCuesViaSource: 'Loaded {cueCount} cues via {sourceLabel}',
+      statusLoadedCuesGeneratedNotes: 'Loaded {cueCount} cues and generated notes',
+      statusYouTubeVerificationRequired: 'YouTube verification required before retry',
+      statusFailedLoadWorkspace: 'Failed to load workspace',
+      statusAuthorizePopupReturnTranscript: 'Authorize in popup and return transcript to workspace',
+      statusPopupReturnedEmpty: 'Popup returned empty transcript',
+      statusLoadedCuesViaPopup: 'Loaded {cueCount} cues via browser OAuth popup',
+      statusLoadVideoBegin: 'Load a video to begin',
+      statusRequestFailed: 'Request failed',
+      statusOAuthNotConfigured: 'YouTube OAuth is not configured',
+      statusOAuthFailed: 'YouTube OAuth failed',
+      statusYouTubeApiTimeout: 'YouTube API load timeout',
+      cardYouTubeVerificationNeeded: 'YouTube verification needed',
+      cardCaptchaIpCheck: 'YouTube asked for a captcha or anti-bot check for this IP',
+      cardUsePopupFlow: 'Use browser OAuth popup to fetch transcript on local network and return here',
+      linkOpenBrowserOAuthPopup: 'Open Browser OAuth Popup',
+      buttonRetryLoadWorkspace: 'Retry Load Workspace',
+      cardLocalFallbackStatus: 'Local fallback status: {error}',
+      cardSmartnoteAfterLoad: 'Smartnote will appear after the workspace loads',
+      cardSummaryAfterLoad: 'AI Summary will appear after the workspace loads',
+      cardDeferredTab: 'This tab is not part of the current minimal refactor yet',
+      videoSubtitleId: 'YouTube ID: {videoId}',
+      videoNowPlaying: 'Now playing',
+      linkOpenOnYouTube: 'Open on YouTube',
+      emptyTranscriptIsEmpty: 'Transcript is empty',
+      subtitleSlicesFromCues: '{sliceCount} slices from {cueCount} cues',
+      labelTone: 'Tone',
+      labelLength: 'Length',
+      labelSectionDensity: 'Section Density',
+      labelRelatedFocus: 'Related Focus',
+      optionInsightful: 'Insightful',
+      optionAnalytical: 'Analytical',
+      optionConcise: 'Concise',
+      optionDramatic: 'Dramatic',
+      optionDetailed: 'Detailed',
+      optionBalanced: 'Balanced',
+      optionCompact: 'Compact',
+      optionDense: 'Dense',
+      optionSpacious: 'Spacious',
+      optionAdjacentTopics: 'Adjacent topics',
+      optionSameSpeakers: 'Same speakers',
+      optionDeeperDive: 'Deeper dive',
+      sectionGenerationControls: 'Generation Controls',
+      sectionDetailPane: 'Detail Pane',
+      detailPaneNotice: 'Click a person in the People tab to load wiki-style details and related videos',
+    },
+    zh: {
+      localeToggleText: 'EN / 中文',
+      appTitle: 'YouTube AI 工作区',
+      ariaToggleTheme: '切换主题',
+      ariaSwitchLanguage: '切换语言',
+      ariaToggleUrlControls: '切换 URL 控件',
+      ariaWorkspaceTabs: '工作区标签',
+      metaDescription: '实时 YouTube 字幕工作区，支持中文 AI 摘要、思维导图、相关视频和人物标签',
+      heroWordmark: '/ YouTube 字幕转 AI 笔记 /',
+      labelVideoUrl: 'YouTube 链接',
+      placeholderVideoUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+      buttonAuthorizeYouTube: '授权 YouTube',
+      buttonLoadWorkspace: '加载工作区',
+      titleLiveVideo: '实时视频',
+      subtitleLoadVideoStartWorkspace: '加载一个视频即可启动工作区',
+      placeholderPasteCaptionedVideo: '粘贴一个带字幕的 YouTube 视频',
+      placeholderPlayerTranscriptTabsPopulate: '播放器、字幕和 AI 标签会一起加载',
+      titleLiveTranscript: '实时字幕',
+      subtitleTranscriptCuesAppear: '字幕片段会显示在这里',
+      labelAutoFollow: '自动跟随',
+      optionOn: '开',
+      optionOff: '关',
+      labelTranscriptWindow: '字幕窗口',
+      optionAllCues: '全部片段',
+      optionSecBlocks: '15 秒分块',
+      optionSmartSlices: '智能切片',
+      emptyTranscriptClickableAfterLoad: '工作区加载完成后，字幕片段即可点击',
+      titleAiWorkspace: 'AI 工作区',
+      subtitleSmartnoteDefaultAiSummaryAvailable: 'Smartnote 是默认标签，AI Summary 也可用',
+      tabSmartnote: 'AI 笔记',
+      tabSummary: 'AI 总结',
+      tabMindmap: '思维导图',
+      tabRelated: '相关视频',
+      tabPeople: '人物',
+      statusPrefixError: '<strong>错误</strong> ',
+      statusPrefixReady: '<strong>就绪</strong> ',
+      statusPrefixWorking: '<strong>处理中</strong> ',
+      statusYouTubeAuthReady: 'YouTube 授权已就绪',
+      statusYouTubeAuthFailed: 'YouTube 授权失败',
+      statusPasteUrlFirst: '请先粘贴 YouTube 链接',
+      statusInvalidVideoId: '无法提取有效的 YouTube 视频 ID',
+      statusFetchingTranscript: '正在获取字幕',
+      statusLoadedCuesViaSource: '已通过 {sourceLabel} 加载 {cueCount} 条片段',
+      statusLoadedCuesGeneratedNotes: '已加载 {cueCount} 条片段并生成笔记',
+      statusYouTubeVerificationRequired: '需要先完成 YouTube 验证再重试',
+      statusFailedLoadWorkspace: '加载工作区失败',
+      statusAuthorizePopupReturnTranscript: '请在弹窗完成授权并返回字幕到工作区',
+      statusPopupReturnedEmpty: '弹窗返回的字幕为空',
+      statusLoadedCuesViaPopup: '已通过浏览器 OAuth 弹窗加载 {cueCount} 条片段',
+      statusLoadVideoBegin: '加载一个视频即可开始',
+      statusRequestFailed: '请求失败',
+      statusOAuthNotConfigured: '未配置 YouTube OAuth',
+      statusOAuthFailed: 'YouTube OAuth 失败',
+      statusYouTubeApiTimeout: 'YouTube API 加载超时',
+      cardYouTubeVerificationNeeded: '需要 YouTube 验证',
+      cardCaptchaIpCheck: 'YouTube 要求此 IP 完成验证码或反机器人校验',
+      cardUsePopupFlow: '请使用浏览器 OAuth 弹窗在本地网络获取字幕并回传',
+      linkOpenBrowserOAuthPopup: '打开浏览器 OAuth 弹窗',
+      buttonRetryLoadWorkspace: '重试加载工作区',
+      cardLocalFallbackStatus: '本地兜底状态: {error}',
+      cardSmartnoteAfterLoad: '加载工作区后会在这里显示 Smartnote',
+      cardSummaryAfterLoad: '加载工作区后会在这里显示 AI Summary',
+      cardDeferredTab: '当前最小化重构尚未包含该标签',
+      videoSubtitleId: 'YouTube ID: {videoId}',
+      videoNowPlaying: '正在播放',
+      linkOpenOnYouTube: '在 YouTube 打开',
+      emptyTranscriptIsEmpty: '字幕为空',
+      subtitleSlicesFromCues: '{cueCount} 条片段生成 {sliceCount} 个切片',
+      labelTone: '语气',
+      labelLength: '长度',
+      labelSectionDensity: '段落密度',
+      labelRelatedFocus: '相关推荐方向',
+      optionInsightful: '有洞察',
+      optionAnalytical: '偏分析',
+      optionConcise: '简洁',
+      optionDramatic: '戏剧化',
+      optionDetailed: '详细',
+      optionBalanced: '平衡',
+      optionCompact: '紧凑',
+      optionDense: '密集',
+      optionSpacious: '宽松',
+      optionAdjacentTopics: '相邻话题',
+      optionSameSpeakers: '相同讲者',
+      optionDeeperDive: '深入延展',
+      sectionGenerationControls: '生成控制',
+      sectionDetailPane: '详情面板',
+      detailPaneNotice: '点击人物标签中的人物可加载 wiki 风格详情和相关视频',
+    },
+  };
+
+  function t(key, params) {
+    var dict = I18N[locale] || I18N.en;
+    var template = dict[key] || I18N.en[key] || key;
+    if (!params) return template;
+    return String(template).replace(/\{([a-zA-Z0-9_]+)\}/g, function (_, token) {
+      var value = params[token];
+      return value == null ? '' : String(value);
+    });
+  }
+
+  function localizeSelectOptions(select, labels) {
+    if (!select) return;
+    var currentValue = select.value;
+    var options = [];
+    for (var i = 0; i < select.options.length; i++) {
+      options.push({
+        value: select.options[i].value,
+        text: labels[select.options[i].value] || select.options[i].textContent || '',
+      });
+    }
+    select.innerHTML = options.map(function (option) {
+      return '<option value="' + escapeHtml(option.value) + '">' + escapeHtml(option.text) + '</option>';
+    }).join('');
+    select.value = currentValue;
+  }
+
+  function setText(id, key) {
+    var node = document.getElementById(id);
+    if (!node) return;
+    node.textContent = t(key);
+  }
+
+  function setLabelPrefix(id, key) {
+    var label = document.getElementById(id);
+    if (!label || !label.childNodes || !label.childNodes.length) return;
+    label.childNodes[0].nodeValue = t(key) + '\n                    ';
+  }
+
+  function applyLocale() {
+    document.documentElement.lang = locale === 'zh' ? 'zh-Hans' : 'en';
+    document.title = t('appTitle');
+    if (localeToggleText) localeToggleText.textContent = t('localeToggleText');
+    if (themeToggle) themeToggle.setAttribute('aria-label', t('ariaToggleTheme'));
+    if (localeToggle) localeToggle.setAttribute('aria-label', t('ariaSwitchLanguage'));
+    if (controlCollapseToggle) controlCollapseToggle.setAttribute('aria-label', t('ariaToggleUrlControls'));
+    var tabStrip = document.querySelector('.tab-strip');
+    if (tabStrip) tabStrip.setAttribute('aria-label', t('ariaWorkspaceTabs'));
+    var appDescription = document.getElementById('app-description');
+    if (appDescription) appDescription.setAttribute('content', t('metaDescription'));
+    var heroWordmark = document.querySelector('.hero-wordmark');
+    if (heroWordmark) heroWordmark.textContent = t('heroWordmark');
+
+    setText('label-video-url', 'labelVideoUrl');
+    setText('authorize-youtube', 'buttonAuthorizeYouTube');
+    setText('load-workspace', 'buttonLoadWorkspace');
+    setText('player-title', 'titleLiveVideo');
+    setText('video-subtitle', 'subtitleLoadVideoStartWorkspace');
+    setText('player-placeholder-title', 'placeholderPasteCaptionedVideo');
+    setText('player-placeholder-copy', 'placeholderPlayerTranscriptTabsPopulate');
+    setText('transcript-title', 'titleLiveTranscript');
+    setText('transcript-subtitle', 'subtitleTranscriptCuesAppear');
+    setText('workspace-title', 'titleAiWorkspace');
+    setText('workspace-subtitle', 'subtitleSmartnoteDefaultAiSummaryAvailable');
+    setText('analysis-empty', 'cardSmartnoteAfterLoad');
+    setText('generation-section-title', 'sectionGenerationControls');
+    setText('detail-pane-title', 'sectionDetailPane');
+
+    if (videoUrl) videoUrl.placeholder = t('placeholderVideoUrl');
+    var detailPane = document.getElementById('detail-pane');
+    if (detailPane) {
+      detailPane.innerHTML = '<div class="notice-card">' + escapeHtml(t('detailPaneNotice')) + '</div>';
+    }
+
+    var tabLabelById = {
+      smartnote: t('tabSmartnote'),
+      summary: t('tabSummary'),
+      mindmap: t('tabMindmap'),
+      related: t('tabRelated'),
+      people: t('tabPeople'),
+    };
+    tabButtons.forEach(function (button) {
+      var tabId = String(button.getAttribute('data-tab-button') || '');
+      if (tabLabelById[tabId]) {
+        button.textContent = tabLabelById[tabId];
+      }
+    });
+
+    setLabelPrefix('label-auto-follow', 'labelAutoFollow');
+    setLabelPrefix('label-transcript-window', 'labelTranscriptWindow');
+    setLabelPrefix('label-tone', 'labelTone');
+    setLabelPrefix('label-length', 'labelLength');
+    setLabelPrefix('label-section-density', 'labelSectionDensity');
+    setLabelPrefix('label-related-focus', 'labelRelatedFocus');
+
+    localizeSelectOptions(autoFollow, {on: t('optionOn'), off: t('optionOff')});
+    localizeSelectOptions(transcriptWindow, {
+      all: t('optionAllCues'),
+      blocks: t('optionSecBlocks'),
+      smart: t('optionSmartSlices'),
+    });
+    localizeSelectOptions(document.getElementById('tone'), {
+      insightful: t('optionInsightful'),
+      analytical: t('optionAnalytical'),
+      concise: t('optionConcise'),
+      dramatic: t('optionDramatic'),
+    });
+    localizeSelectOptions(document.getElementById('length'), {
+      detailed: t('optionDetailed'),
+      balanced: t('optionBalanced'),
+      compact: t('optionCompact'),
+    });
+    localizeSelectOptions(document.getElementById('section-density'), {
+      balanced: t('optionBalanced'),
+      dense: t('optionDense'),
+      spacious: t('optionSpacious'),
+    });
+    localizeSelectOptions(document.getElementById('related-focus'), {
+      adjacent: t('optionAdjacentTopics'),
+      'same-speakers': t('optionSameSpeakers'),
+      'deeper-dive': t('optionDeeperDive'),
+    });
+
+    if (!transcriptEntries.length && transcriptList) {
+      transcriptList.innerHTML = '<div class="empty-state">' + escapeHtml(t('emptyTranscriptClickableAfterLoad')) + '</div>';
+    }
+    renderTranscriptRows();
+    renderActiveWorkspaceTab();
+  }
 
   function setStatus(message, kind) {
     if (!statusLine) return;
-    var prefix = kind === 'error' ? '<strong>Error</strong> '
-      : kind === 'success' ? '<strong>Ready</strong> '
-      : '<strong>Working</strong> ';
+    var prefix = kind === 'error' ? t('statusPrefixError')
+      : kind === 'success' ? t('statusPrefixReady')
+      : t('statusPrefixWorking');
     statusLine.innerHTML = prefix + escapeHtml(message);
   }
 
@@ -82,19 +389,16 @@ export function bootstrapAppClient() {
   if (localeToggle) {
     localeToggle.addEventListener('click', function () {
       locale = locale === 'en' ? 'zh' : 'en';
-      if (localeToggleText) {
-        localeToggleText.textContent = 'EN / 中文';
-      }
-      document.documentElement.lang = locale === 'zh' ? 'zh-Hans' : 'en';
+      applyLocale();
     });
   }
 
   if (authorizeYouTubeButton) {
     authorizeYouTubeButton.addEventListener('click', function () {
       requestYouTubeOAuthToken(true).then(function () {
-        setStatus('YouTube authorization ready', 'success');
+        setStatus(t('statusYouTubeAuthReady'), 'success');
       }).catch(function (error) {
-        setStatus(error && error.message ? error.message : 'YouTube authorization failed', 'error');
+        setStatus(error && error.message ? error.message : t('statusYouTubeAuthFailed'), 'error');
       });
     });
   }
@@ -103,12 +407,12 @@ export function bootstrapAppClient() {
     loadButton.addEventListener('click', async function () {
       var url = (videoUrl ? videoUrl.value : '').trim();
       if (!url) {
-        setStatus('Paste a YouTube URL first', 'error');
+        setStatus(t('statusPasteUrlFirst'), 'error');
         return;
       }
       var videoId = quickExtractVideoId(url);
       if (!videoId) {
-        setStatus('Could not extract a valid YouTube video ID', 'error');
+        setStatus(t('statusInvalidVideoId'), 'error');
         return;
       }
 
@@ -118,7 +422,7 @@ export function bootstrapAppClient() {
         setControlSectionCollapsed(true);
         renderLiveVideo(videoId, url);
 
-        setStatus('Fetching transcript', 'loading');
+        setStatus(t('statusFetchingTranscript'), 'loading');
         var transcriptRequest = {url: url};
         if (hasValidYouTubeOAuthToken()) {
           transcriptRequest.oauthAccessToken = youtubeOAuthToken;
@@ -129,7 +433,7 @@ export function bootstrapAppClient() {
         startAutoFollowLoop();
         var cueCount = Number(transcriptPayload.cueCount || transcriptEntries.length || 0);
         var sourceLabel = describeTranscriptSource(transcriptPayload && transcriptPayload.source);
-        setStatus('Loaded ' + cueCount + ' cues via ' + sourceLabel, 'success');
+        setStatus(t('statusLoadedCuesViaSource', {cueCount: cueCount, sourceLabel: sourceLabel}), 'success');
         var generated = await Promise.all([
           postJson('/api/smartnote', {transcript: transcriptPayload.fullText}),
           postJson('/api/summary', {transcript: transcriptPayload.fullText}),
@@ -137,14 +441,14 @@ export function bootstrapAppClient() {
         smartnoteHtml = generated[0] && generated[0].html ? generated[0].html : '';
         summaryHtml = generated[1] && generated[1].html ? generated[1].html : '';
         renderActiveWorkspaceTab();
-        setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
+        setStatus(t('statusLoadedCuesGeneratedNotes', {cueCount: cueCount}), 'success');
       } catch (error) {
         if (error && error.code === 'youtube_captcha_required') {
           renderCaptchaRecoveryNotice(error);
-          setStatus('YouTube verification required before retry', 'error');
+          setStatus(t('statusYouTubeVerificationRequired'), 'error');
           return;
         }
-        setStatus(error && error.message ? error.message : 'Failed to load workspace', 'error');
+        setStatus(error && error.message ? error.message : t('statusFailedLoadWorkspace'), 'error');
       } finally {
         loadButton.disabled = false;
       }
@@ -212,7 +516,7 @@ export function bootstrapAppClient() {
         if (!opened) {
           window.location.href = String(popupUrl);
         }
-        setStatus('Authorize in popup and return transcript to workspace', 'loading');
+        setStatus(t('statusAuthorizePopupReturnTranscript'), 'loading');
         return;
       }
       if (action === 'retry-load-workspace') {
@@ -230,16 +534,17 @@ export function bootstrapAppClient() {
     var payload = data.payload || {};
     transcriptEntries = normalizeTranscriptEntries(payload.entries || []);
     if (!transcriptEntries.length) {
-      setStatus('Popup returned empty transcript', 'error');
+      setStatus(t('statusPopupReturnedEmpty'), 'error');
       return;
     }
     renderTranscriptRows();
     startAutoFollowLoop();
     var cueCount = Number(payload.cueCount || transcriptEntries.length || 0);
-    setStatus('Loaded ' + cueCount + ' cues via browser OAuth popup', 'success');
+    setStatus(t('statusLoadedCuesViaPopup', {cueCount: cueCount}), 'success');
   });
 
-  setStatus('Load a video to begin', 'success');
+  applyLocale();
+  setStatus(t('statusLoadVideoBegin'), 'success');
   setupYouTubeOAuth();
   renderActiveWorkspaceTab();
 
@@ -255,7 +560,7 @@ export function bootstrapAppClient() {
     });
 
     if (!response.ok) {
-      var error = new Error(json.error || 'Request failed');
+      var error = new Error(json.error || t('statusRequestFailed'));
       error.status = response.status;
       if (json && typeof json.code === 'string') error.code = json.code;
       if (json && json.data && typeof json.data === 'object') error.data = json.data;
@@ -287,7 +592,7 @@ export function bootstrapAppClient() {
       method: 'GET',
     });
     if (!response.ok) {
-      throw new Error('Request failed');
+      throw new Error(t('statusRequestFailed'));
     }
     return response.json().catch(function () {
       return {};
@@ -301,12 +606,12 @@ export function bootstrapAppClient() {
   function requestYouTubeOAuthToken(interactive) {
     return new Promise(function (resolve, reject) {
       if (!youtubeTokenClient) {
-        reject(new Error('YouTube OAuth is not configured'));
+        reject(new Error(t('statusOAuthNotConfigured')));
         return;
       }
       youtubeTokenClient.callback = function (tokenResponse) {
         if (tokenResponse && tokenResponse.error) {
-          reject(new Error(String(tokenResponse.error_description || tokenResponse.error || 'YouTube OAuth failed')));
+          reject(new Error(String(tokenResponse.error_description || tokenResponse.error || t('statusOAuthFailed'))));
           return;
         }
         youtubeOAuthToken = String(tokenResponse && tokenResponse.access_token ? tokenResponse.access_token : '');
@@ -332,11 +637,11 @@ export function bootstrapAppClient() {
 
   function describeTranscriptSource(source) {
     var key = String(source || '').trim();
-    if (key === 'youtube_oauth_timedtext') return 'YouTube OAuth';
-    if (key === 'youtube_data_api_key_timedtext') return 'YouTube API key';
-    if (key === 'local_yt_dlp_fallback') return 'local yt-dlp fallback';
-    if (key === 'youtube_transcript_library') return 'youtube-transcript library';
-    return 'default transcript path';
+    if (key === 'youtube_oauth_timedtext') return locale === 'zh' ? 'YouTube OAuth' : 'YouTube OAuth';
+    if (key === 'youtube_data_api_key_timedtext') return locale === 'zh' ? 'YouTube API key' : 'YouTube API key';
+    if (key === 'local_yt_dlp_fallback') return locale === 'zh' ? '本地 yt-dlp 兜底' : 'local yt-dlp fallback';
+    if (key === 'youtube_transcript_library') return locale === 'zh' ? 'youtube-transcript 库' : 'youtube-transcript library';
+    return locale === 'zh' ? '默认字幕路径' : 'default transcript path';
   }
 
   function renderCaptchaRecoveryNotice(error) {
@@ -347,18 +652,18 @@ export function bootstrapAppClient() {
     var fallback = error && error.data && error.data.fallback ? error.data.fallback : {};
     var fallbackNote = '';
     if (fallback && fallback.error) {
-      fallbackNote = '<p>' + escapeHtml('Local fallback status: ' + String(fallback.error)) + '</p>';
+      fallbackNote = '<p>' + escapeHtml(t('cardLocalFallbackStatus', {error: String(fallback.error)})) + '</p>';
     }
     analysisMain.innerHTML = ''
       + '<div class="notice-card">'
-      + '<h3>YouTube verification needed</h3>'
-      + '<p>YouTube asked for a captcha or anti-bot check for this IP.</p>'
-      + '<p>Use browser OAuth popup to fetch transcript on local network and return here.</p>'
-      + '<p><a class="inline-link" href="/popup/youtube-transcript-auth?videoUrl=' + encodeURIComponent(String(currentVideoUrl || '')) + '" target="_blank" rel="noopener noreferrer">Open Browser OAuth Popup</a></p>'
+      + '<h3>' + escapeHtml(t('cardYouTubeVerificationNeeded')) + '</h3>'
+      + '<p>' + escapeHtml(t('cardCaptchaIpCheck')) + '</p>'
+      + '<p>' + escapeHtml(t('cardUsePopupFlow')) + '</p>'
+      + '<p><a class="inline-link" href="/popup/youtube-transcript-auth?videoUrl=' + encodeURIComponent(String(currentVideoUrl || '')) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(t('linkOpenBrowserOAuthPopup')) + '</a></p>'
       + fallbackNote
       + '<div class="action-stack">'
-      + '<button type="button" class="primary-button" data-recovery-action="open-youtube-check" data-open-url="' + escapeHtml(pendingCaptchaOpenUrl) + '">Open Browser OAuth Popup</button>'
-      + '<button type="button" class="primary-button" data-recovery-action="retry-load-workspace">Retry Load Workspace</button>'
+      + '<button type="button" class="primary-button" data-recovery-action="open-youtube-check" data-open-url="' + escapeHtml(pendingCaptchaOpenUrl) + '">' + escapeHtml(t('linkOpenBrowserOAuthPopup')) + '</button>'
+      + '<button type="button" class="primary-button" data-recovery-action="retry-load-workspace">' + escapeHtml(t('buttonRetryLoadWorkspace')) + '</button>'
       + '</div>'
       + '</div>';
   }
@@ -368,7 +673,7 @@ export function bootstrapAppClient() {
     if (analysisEmpty) analysisEmpty.remove();
     if (activeWorkspaceTab === 'smartnote') {
       if (!smartnoteHtml) {
-        analysisMain.innerHTML = '<div class="notice-card">Smartnote will appear after the workspace loads.</div>';
+        analysisMain.innerHTML = '<div class="notice-card">' + escapeHtml(t('cardSmartnoteAfterLoad')) + '</div>';
         return;
       }
       analysisMain.innerHTML = '<div class="summary-frame smartnote-frame">' + String(smartnoteHtml) + '</div>';
@@ -376,13 +681,13 @@ export function bootstrapAppClient() {
     }
     if (activeWorkspaceTab === 'summary') {
       if (!summaryHtml) {
-        analysisMain.innerHTML = '<div class="notice-card">AI Summary will appear after the workspace loads.</div>';
+        analysisMain.innerHTML = '<div class="notice-card">' + escapeHtml(t('cardSummaryAfterLoad')) + '</div>';
         return;
       }
       analysisMain.innerHTML = '<div class="summary-frame">' + String(summaryHtml) + '</div>';
       return;
     }
-    analysisMain.innerHTML = '<div class="notice-card">This tab is not part of the current minimal refactor yet.</div>';
+    analysisMain.innerHTML = '<div class="notice-card">' + escapeHtml(t('cardDeferredTab')) + '</div>';
   }
 
   function renderLiveVideo(videoId, videoUrl) {
@@ -392,18 +697,18 @@ export function bootstrapAppClient() {
     mountYouTubePlayer(videoId);
     youtubePlayer.hidden = false;
     if (playerPlaceholder) playerPlaceholder.hidden = true;
-    if (playerTitle) playerTitle.textContent = 'Live Video';
-    if (videoSubtitle) videoSubtitle.textContent = 'YouTube ID: ' + videoId;
+    if (playerTitle) playerTitle.textContent = t('titleLiveVideo');
+    if (videoSubtitle) videoSubtitle.textContent = t('videoSubtitleId', {videoId: videoId});
     if (videoMeta) {
       var safeVideoId = encodeURIComponent(String(videoId || ''));
       videoMeta.innerHTML = '<div class="video-meta-bar">'
-        + '<span class="video-meta-channel">Now playing<br>' + escapeHtml(videoId) + '</span>'
-        + '<a class="inline-link" href="https://www.youtube.com/watch?v=' + safeVideoId + '" target="_blank" rel="noopener noreferrer">Open on YouTube</a>'
+        + '<span class="video-meta-channel">' + escapeHtml(t('videoNowPlaying')) + '<br>' + escapeHtml(videoId) + '</span>'
+        + '<a class="inline-link" href="https://www.youtube.com/watch?v=' + safeVideoId + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(t('linkOpenOnYouTube')) + '</a>'
         + '</div>';
       resolveVideoTitle(currentVideoUrl, videoId).then(function (title) {
         var channel = videoMeta.querySelector('.video-meta-channel');
         if (!channel) return;
-        channel.innerHTML = 'Now playing<br>' + escapeHtml(title);
+        channel.innerHTML = escapeHtml(t('videoNowPlaying')) + '<br>' + escapeHtml(title);
       });
     }
   }
@@ -452,8 +757,8 @@ export function bootstrapAppClient() {
     if (!transcriptList) return;
     if (!transcriptEntries.length) {
       transcriptRows = [];
-      transcriptList.innerHTML = '<div class="empty-state">Transcript cues will become clickable once the workspace is loaded.</div>';
-      if (transcriptSubtitle) transcriptSubtitle.textContent = 'Transcript cues will appear here.';
+      transcriptList.innerHTML = '<div class="empty-state">' + escapeHtml(t('emptyTranscriptClickableAfterLoad')) + '</div>';
+      if (transcriptSubtitle) transcriptSubtitle.textContent = t('subtitleTranscriptCuesAppear');
       return;
     }
 
@@ -466,7 +771,7 @@ export function bootstrapAppClient() {
       transcriptRows = buildSmartRows(transcriptEntries);
     }
     if (!transcriptRows.length) {
-      transcriptList.innerHTML = '<div class="empty-state">Transcript is empty.</div>';
+      transcriptList.innerHTML = '<div class="empty-state">' + escapeHtml(t('emptyTranscriptIsEmpty')) + '</div>';
       return;
     }
     if (!activeRowId) activeRowId = transcriptRows[0].id;
@@ -481,7 +786,10 @@ export function bootstrapAppClient() {
     }
     transcriptList.innerHTML = html;
     if (transcriptSubtitle) {
-      transcriptSubtitle.textContent = transcriptRows.length + ' slices from ' + transcriptEntries.length + ' cues.';
+      transcriptSubtitle.textContent = t('subtitleSlicesFromCues', {
+        sliceCount: transcriptRows.length,
+        cueCount: transcriptEntries.length,
+      });
     }
   }
 
@@ -657,7 +965,7 @@ export function bootstrapAppClient() {
         }
         if (Date.now() - started > 10000) {
           window.clearInterval(timer);
-          reject(new Error('YouTube API load timeout'));
+          reject(new Error(t('statusYouTubeApiTimeout')));
         }
       }, 80);
     });
@@ -674,7 +982,7 @@ export function bootstrapAppClient() {
       + '&origin=' + encodeURIComponent(window.location.origin);
     youtubePlayer.innerHTML = '<iframe'
       + ' src="' + embedUrl + '"'
-      + ' title="Live Video"'
+      + ' title="' + escapeHtml(t('titleLiveVideo')) + '"'
       + ' frameborder="0"'
       + ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"'
       + ' allowfullscreen'
