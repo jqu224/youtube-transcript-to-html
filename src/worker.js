@@ -183,6 +183,15 @@ async function handleGeminiPing(_request, env, fetchFn) {
   }
 }
 
+function isWorkspaceDebugEnabled(env, requestUrl, headers) {
+  const fromQuery = requestUrl.searchParams.get('workspaceDebug') === '1';
+  const fromHeader = headers.get('x-workspace-debug') === '1';
+  const fromEnv = String(env.DEBUG_WORKSPACE || '')
+    .toLowerCase()
+    .trim() === '1';
+  return fromQuery || fromHeader || fromEnv;
+}
+
 async function handleWorkspaceRequest(request, fetchFn, env) {
   const requestUrl = new URL(request.url);
   const body = await readJsonBody(request);
@@ -191,9 +200,7 @@ async function handleWorkspaceRequest(request, fetchFn, env) {
   }
 
   if (requestUrl.searchParams.get('stream') === '1') {
-    const wantWorkspaceDebug =
-      request.headers.get('x-workspace-debug') === '1'
-      || requestUrl.searchParams.get('workspaceDebug') === '1';
+    const wantWorkspaceDebug = isWorkspaceDebugEnabled(env, requestUrl, request.headers);
     return streamWorkspaceNdjson(body.url, fetchFn, env, {wantWorkspaceDebug});
   }
 
@@ -228,6 +235,9 @@ function streamWorkspaceNdjson(url, fetchFn, env, options = {}) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] start', {url});
+        }
         const data = await fetchWorkspaceData(url, fetchFn, env);
         if (!data || !data.video || !data.transcript) {
           throw new Error('Workspace response missing video or transcript.');
@@ -237,6 +247,14 @@ function streamWorkspaceNdjson(url, fetchFn, env, options = {}) {
           delete data._workspaceDebug;
         }
         const entries = normalizeTranscriptEntries(data.transcript.entries || []);
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] fetched workspace', {
+            videoId: data.video && data.video.id,
+            transcriptLanguage: data.transcript.language,
+            transcriptSource: data.transcript.source,
+            cueCount: entries.length,
+          });
+        }
         const workspacePayload = makeWorkspacePayload({
           video: data.video,
           transcript: {
@@ -259,6 +277,9 @@ function streamWorkspaceNdjson(url, fetchFn, env, options = {}) {
         }
 
         controller.enqueue(encoder.encode(`${JSON.stringify(headLine)}\n`));
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] head line enqueued');
+        }
 
         await new Promise(function(resolve) {
           setTimeout(resolve, 0);
@@ -272,8 +293,14 @@ function streamWorkspaceNdjson(url, fetchFn, env, options = {}) {
         }
 
         controller.enqueue(encoder.encode(`${JSON.stringify({type: 'done'})}\n`));
+        if (wantWorkspaceDebug) {
+          console.log('[workspace-stream] done line enqueued');
+        }
         controller.close();
       } catch (error) {
+        if (wantWorkspaceDebug) {
+          console.error('[workspace-stream] error', error && error.message, error && error.stack);
+        }
         controller.error(error);
       }
     },
