@@ -111,6 +111,7 @@ export function renderAppPage() {
           </div>
 
           <div class="action-stack">
+            <button class="primary-button" type="button" id="authorize-youtube" hidden>Authorize YouTube</button>
             <button class="primary-button" type="button" id="load-workspace">Load Workspace</button>
           </div>
           </div>
@@ -252,6 +253,7 @@ export function renderAppPage() {
     </div>
 
     <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script type="module" src="/assets/app.js"></script>
   </body>
 </html>`;

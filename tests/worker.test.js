@@ -74,4 +74,22 @@ describe('worker api routes', () => {
     expect(app.status).toBe(200);
     expect(app.headers.get('content-type')).toContain('javascript');
   });
+
+  it('returns public client config for frontend oauth setup', async () => {
+    const response = await worker.fetch(new Request('https://example.com/api/config'), {
+      YOUTUBE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.youtubeClientId).toBe('test-client-id.apps.googleusercontent.com');
+  });
+
+  it('serves browser oauth popup page', async () => {
+    const response = await worker.fetch(new Request('https://example.com/popup/youtube-transcript-auth'), {});
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    const html = await response.text();
+    expect(html).toContain('Authorize and Fetch');
+  });
 });

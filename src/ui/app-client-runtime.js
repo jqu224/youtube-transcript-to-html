@@ -2,6 +2,7 @@ export function bootstrapAppClient() {
   var themeToggle = document.getElementById('theme-toggle');
   var localeToggle = document.getElementById('locale-toggle');
   var localeToggleText = document.getElementById('locale-toggle-text');
+  var authorizeYouTubeButton = document.getElementById('authorize-youtube');
   var loadButton = document.getElementById('load-workspace');
   var videoUrl = document.getElementById('video-url');
   var statusLine = document.getElementById('status-line');
@@ -35,6 +36,9 @@ export function bootstrapAppClient() {
   var summaryHtml = '';
   var smartnoteHtml = '';
   var pendingCaptchaOpenUrl = '';
+  var youtubeOAuthToken = '';
+  var youtubeOAuthTokenExpiresAt = 0;
+  var youtubeTokenClient = null;
 
   function setStatus(message, kind) {
     if (!statusLine) return;
@@ -85,6 +89,16 @@ export function bootstrapAppClient() {
     });
   }
 
+  if (authorizeYouTubeButton) {
+    authorizeYouTubeButton.addEventListener('click', function () {
+      requestYouTubeOAuthToken(true).then(function () {
+        setStatus('YouTube authorization ready', 'success');
+      }).catch(function (error) {
+        setStatus(error && error.message ? error.message : 'YouTube authorization failed', 'error');
+      });
+    });
+  }
+
   if (loadButton) {
     loadButton.addEventListener('click', async function () {
       var url = (videoUrl ? videoUrl.value : '').trim();
@@ -105,11 +119,17 @@ export function bootstrapAppClient() {
         renderLiveVideo(videoId, url);
 
         setStatus('Fetching transcript', 'loading');
-        var transcriptPayload = await postJson('/api/transcript', {url: url});
+        var transcriptRequest = {url: url};
+        if (hasValidYouTubeOAuthToken()) {
+          transcriptRequest.oauthAccessToken = youtubeOAuthToken;
+        }
+        var transcriptPayload = await postJson('/api/transcript', transcriptRequest);
         transcriptEntries = normalizeTranscriptEntries(transcriptPayload.entries || []);
         renderTranscriptRows();
         startAutoFollowLoop();
-        setStatus('Generating Smartnote and AI Summary', 'loading');
+        var cueCount = Number(transcriptPayload.cueCount || transcriptEntries.length || 0);
+        var sourceLabel = describeTranscriptSource(transcriptPayload && transcriptPayload.source);
+        setStatus('Loaded ' + cueCount + ' cues via ' + sourceLabel, 'success');
         // var generated = await Promise.all([
         //   postJson('/api/smartnote', {transcript: transcriptPayload.fullText}),
         //   postJson('/api/summary', {transcript: transcriptPayload.fullText}),
@@ -117,7 +137,6 @@ export function bootstrapAppClient() {
         // smartnoteHtml = generated[0] && generated[0].html ? generated[0].html : '';
         // summaryHtml = generated[1] && generated[1].html ? generated[1].html : '';
         // renderActiveWorkspaceTab();
-        // var cueCount = Number(transcriptPayload.cueCount || 0);
         // setStatus('Loaded ' + cueCount + ' cues and generated notes', 'success');
       } catch (error) {
         if (error && error.code === 'youtube_captcha_required') {
@@ -188,12 +207,12 @@ export function bootstrapAppClient() {
       if (!trigger) return;
       var action = String(trigger.getAttribute('data-recovery-action') || '');
       if (action === 'open-youtube-check') {
-        var openUrl = pendingCaptchaOpenUrl || trigger.getAttribute('data-open-url') || 'https://www.youtube.com/';
-        var opened = window.open(String(openUrl), '_blank', 'noopener,noreferrer');
+        var popupUrl = '/popup/youtube-transcript-auth?videoUrl=' + encodeURIComponent(String(currentVideoUrl || ''));
+        var opened = window.open(String(popupUrl), '_blank', 'noopener,noreferrer');
         if (!opened) {
-          window.location.href = String(openUrl);
+          window.location.href = String(popupUrl);
         }
-        setStatus('Complete the YouTube check then retry', 'loading');
+        setStatus('Authorize in popup and return transcript to workspace', 'loading');
         return;
       }
       if (action === 'retry-load-workspace') {
@@ -204,7 +223,24 @@ export function bootstrapAppClient() {
     });
   }
 
+  window.addEventListener('message', function (event) {
+    if (!event || event.origin !== window.location.origin) return;
+    var data = event.data || {};
+    if (data.type !== 'youtube-transcript-from-popup') return;
+    var payload = data.payload || {};
+    transcriptEntries = normalizeTranscriptEntries(payload.entries || []);
+    if (!transcriptEntries.length) {
+      setStatus('Popup returned empty transcript', 'error');
+      return;
+    }
+    renderTranscriptRows();
+    startAutoFollowLoop();
+    var cueCount = Number(payload.cueCount || transcriptEntries.length || 0);
+    setStatus('Loaded ' + cueCount + ' cues via browser OAuth popup', 'success');
+  });
+
   setStatus('Load a video to begin', 'success');
+  setupYouTubeOAuth();
   renderActiveWorkspaceTab();
 
   async function postJson(path, payload) {
@@ -229,6 +265,61 @@ export function bootstrapAppClient() {
     return json;
   }
 
+  async function setupYouTubeOAuth() {
+    if (!authorizeYouTubeButton) return;
+    authorizeYouTubeButton.hidden = true;
+    var config = await fetchJson('/api/config').catch(function () {
+      return {};
+    });
+    var clientId = String(config && config.youtubeClientId ? config.youtubeClientId : '').trim();
+    if (!clientId) return;
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) return;
+    youtubeTokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
+      callback: function () {},
+    });
+    authorizeYouTubeButton.hidden = false;
+  }
+
+  async function fetchJson(path) {
+    var response = await fetch(path, {
+      method: 'GET',
+    });
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+    return response.json().catch(function () {
+      return {};
+    });
+  }
+
+  function hasValidYouTubeOAuthToken() {
+    return Boolean(youtubeOAuthToken) && Date.now() < youtubeOAuthTokenExpiresAt;
+  }
+
+  function requestYouTubeOAuthToken(interactive) {
+    return new Promise(function (resolve, reject) {
+      if (!youtubeTokenClient) {
+        reject(new Error('YouTube OAuth is not configured'));
+        return;
+      }
+      youtubeTokenClient.callback = function (tokenResponse) {
+        if (tokenResponse && tokenResponse.error) {
+          reject(new Error(String(tokenResponse.error_description || tokenResponse.error || 'YouTube OAuth failed')));
+          return;
+        }
+        youtubeOAuthToken = String(tokenResponse && tokenResponse.access_token ? tokenResponse.access_token : '');
+        var expiresIn = Number(tokenResponse && tokenResponse.expires_in ? tokenResponse.expires_in : 0);
+        youtubeOAuthTokenExpiresAt = Date.now() + (Number.isFinite(expiresIn) ? expiresIn * 1000 : 0) - 15000;
+        resolve(tokenResponse);
+      };
+      youtubeTokenClient.requestAccessToken({
+        prompt: interactive ? 'consent' : '',
+      });
+    });
+  }
+
   function setActiveWorkspaceTab(tabId) {
     if (!tabId) return;
     activeWorkspaceTab = tabId;
@@ -237,6 +328,15 @@ export function bootstrapAppClient() {
       button.classList.toggle('is-active', id === activeWorkspaceTab);
     });
     renderActiveWorkspaceTab();
+  }
+
+  function describeTranscriptSource(source) {
+    var key = String(source || '').trim();
+    if (key === 'youtube_oauth_timedtext') return 'YouTube OAuth';
+    if (key === 'youtube_data_api_key_timedtext') return 'YouTube API key';
+    if (key === 'local_yt_dlp_fallback') return 'local yt-dlp fallback';
+    if (key === 'youtube_transcript_library') return 'youtube-transcript library';
+    return 'default transcript path';
   }
 
   function renderCaptchaRecoveryNotice(error) {
@@ -253,11 +353,11 @@ export function bootstrapAppClient() {
       + '<div class="notice-card">'
       + '<h3>YouTube verification needed</h3>'
       + '<p>YouTube asked for a captcha or anti-bot check for this IP.</p>'
-      + '<p>Open YouTube in a new tab, finish verification, then retry.</p>'
-      + '<p><a class="inline-link" href="' + escapeHtml(pendingCaptchaOpenUrl) + '" target="_blank" rel="noopener noreferrer">Open YouTube Verification Link</a></p>'
+      + '<p>Use browser OAuth popup to fetch transcript on local network and return here.</p>'
+      + '<p><a class="inline-link" href="/popup/youtube-transcript-auth?videoUrl=' + encodeURIComponent(String(currentVideoUrl || '')) + '" target="_blank" rel="noopener noreferrer">Open Browser OAuth Popup</a></p>'
       + fallbackNote
       + '<div class="action-stack">'
-      + '<button type="button" class="primary-button" data-recovery-action="open-youtube-check" data-open-url="' + escapeHtml(pendingCaptchaOpenUrl) + '">Open YouTube Verification</button>'
+      + '<button type="button" class="primary-button" data-recovery-action="open-youtube-check" data-open-url="' + escapeHtml(pendingCaptchaOpenUrl) + '">Open Browser OAuth Popup</button>'
       + '<button type="button" class="primary-button" data-recovery-action="retry-load-workspace">Retry Load Workspace</button>'
       + '</div>'
       + '</div>';

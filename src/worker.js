@@ -1,4 +1,5 @@
 import {renderAppPage} from './ui/page.js';
+import {renderOAuthPopupPage} from './ui/oauth-popup-page.js';
 import {APP_STYLES} from './ui/styles.js';
 import {LOGO_ASSET_PATH, LOGO_PNG_BYTES} from './ui/brand.js';
 import {CLIENT_APP_SOURCE} from './ui/app-client.js';
@@ -27,6 +28,10 @@ export default {
         return htmlResponse(renderAppPage());
       }
 
+      if (request.method === 'GET' && url.pathname === '/popup/youtube-transcript-auth') {
+        return htmlResponse(renderOAuthPopupPage());
+      }
+
       if (request.method === 'GET' && url.pathname === '/assets/app.js') {
         return javascriptResponse(CLIENT_APP_SOURCE);
       }
@@ -34,6 +39,7 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/transcript') {
         const body = await readJsonBody(request);
         const videoUrl = typeof body.url === 'string' ? body.url.trim() : '';
+        const oauthAccessToken = typeof body.oauthAccessToken === 'string' ? body.oauthAccessToken.trim() : '';
         if (!videoUrl) {
           return jsonResponse({error: 'Missing required field: url'}, 400);
         }
@@ -46,8 +52,15 @@ export default {
         const transcriptPayload = await fetchTranscript(videoId, {
           env: env || {},
           videoUrl,
+          oauthAccessToken,
         });
         return jsonResponse(transcriptPayload);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/config') {
+        return jsonResponse({
+          youtubeClientId: typeof (env && env.YOUTUBE_CLIENT_ID) === 'string' ? env.YOUTUBE_CLIENT_ID : '',
+        });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/summary') {

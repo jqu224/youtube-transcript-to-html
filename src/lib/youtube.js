@@ -37,6 +37,14 @@ export function extractVideoId(input) {
 export async function fetchTranscript(videoId, options = {}) {
   const env = options && options.env ? options.env : {};
   const videoUrl = options && typeof options.videoUrl === 'string' ? options.videoUrl.trim() : '';
+  const oauthAccessToken = options && typeof options.oauthAccessToken === 'string'
+    ? options.oauthAccessToken.trim()
+    : '';
+  if (oauthAccessToken) {
+    try {
+      return await fetchTranscriptViaOAuth(videoId, {oauthAccessToken, env});
+    } catch (_) {}
+  }
   if (env && env.YOUTUBE_KEY) {
     try {
       return await fetchTranscriptViaApiKey(videoId, {env});
@@ -69,23 +77,53 @@ export async function fetchTranscript(videoId, options = {}) {
     entries,
     fullText,
     cueCount: entries.length,
+    source: 'youtube_transcript_library',
   };
 }
 
 export async function fetchTranscriptViaApiKey(videoId, options = {}) {
+  return fetchTranscriptViaGoogleCaptions(videoId, {
+    env: options && options.env ? options.env : {},
+    fetchImpl: options && typeof options.fetchImpl === 'function' ? options.fetchImpl : fetch,
+    source: 'youtube_data_api_key_timedtext',
+  });
+}
+
+export async function fetchTranscriptViaOAuth(videoId, options = {}) {
+  const oauthAccessToken = String(options && options.oauthAccessToken ? options.oauthAccessToken : '').trim();
+  if (!oauthAccessToken) {
+    throw makeHttpError('YouTube OAuth access token is missing', 400, null, 'youtube_oauth_token_missing');
+  }
+  return fetchTranscriptViaGoogleCaptions(videoId, {
+    env: options && options.env ? options.env : {},
+    fetchImpl: options && typeof options.fetchImpl === 'function' ? options.fetchImpl : fetch,
+    oauthAccessToken,
+    source: 'youtube_oauth_timedtext',
+  });
+}
+
+async function fetchTranscriptViaGoogleCaptions(videoId, options = {}) {
   const env = options && options.env ? options.env : {};
   const fetchImpl = options && typeof options.fetchImpl === 'function' ? options.fetchImpl : fetch;
+  const source = String(options && options.source ? options.source : 'youtube_google_api_timedtext');
+  const oauthAccessToken = String(options && options.oauthAccessToken ? options.oauthAccessToken : '').trim();
   const apiKey = String(env.YOUTUBE_KEY || '').trim();
-  if (!apiKey) {
-    throw makeHttpError('YOUTUBE_KEY is not configured', 400, null, 'youtube_api_key_missing');
+  if (!apiKey && !oauthAccessToken) {
+    throw makeHttpError('YOUTUBE_KEY or OAuth access token is required', 400, null, 'youtube_api_auth_missing');
   }
 
   const captionsUrl = new URL('https://youtube.googleapis.com/youtube/v3/captions');
   captionsUrl.searchParams.set('part', 'snippet');
   captionsUrl.searchParams.set('videoId', String(videoId || ''));
-  captionsUrl.searchParams.set('key', apiKey);
+  if (apiKey) captionsUrl.searchParams.set('key', apiKey);
 
-  const captionsResponse = await fetchImpl(captionsUrl.toString());
+  const headers = {};
+  if (oauthAccessToken) {
+    headers.Authorization = `Bearer ${oauthAccessToken}`;
+  }
+  const captionsResponse = await fetchImpl(captionsUrl.toString(), {
+    headers,
+  });
   const captionsPayload = await captionsResponse.json().catch(() => ({}));
   if (!captionsResponse.ok) {
     throw makeHttpError(
@@ -148,7 +186,7 @@ export async function fetchTranscriptViaApiKey(videoId, options = {}) {
     entries,
     fullText,
     cueCount: entries.length,
-    source: 'youtube_data_api_key_timedtext',
+    source,
     language,
   };
 }
