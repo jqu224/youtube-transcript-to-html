@@ -1,0 +1,3 @@
+app.js:41 Uncaught ReferenceError: __name is not defined
+    at bootstrapAppClient (app.js:41:3)
+    at app.js:520:

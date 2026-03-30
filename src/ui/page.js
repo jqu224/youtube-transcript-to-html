@@ -61,7 +61,7 @@ export function renderAppPage() {
             hidden
           >▼</button>
           <div class="control-grid">
-          <div class="control-field">
+          <div class="control-field control-field--video-url">
             <label for="video-url" id="label-video-url">YouTube URL</label>
             <input
               id="video-url"
